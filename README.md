@@ -58,6 +58,21 @@ pip install -r requirements.txt
 python app.py
 ```
 
+### Debug Mode
+
+By default, the application runs in production mode (debug disabled for security). To enable debug mode during development:
+
+**Windows:**
+```batch
+set DEBUG=true
+python app.py
+```
+
+**Linux/Mac:**
+```bash
+DEBUG=true python app.py
+```
+
 ## Usage
 
 ### Adding Merchandise
