@@ -187,4 +187,7 @@ if __name__ == '__main__':
     if not os.path.exists(DATABASE):
         init_db()
         print('Database initialized')
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    
+    # Only enable debug mode if DEBUG environment variable is set
+    debug_mode = os.environ.get('DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug_mode, host='127.0.0.1', port=5000)
