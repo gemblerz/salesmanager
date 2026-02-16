@@ -52,6 +52,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 merchandise_id INTEGER NOT NULL,
                 quantity_sold INTEGER NOT NULL,
+                unit_price REAL NOT NULL,
                 total_price REAL NOT NULL,
                 sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (merchandise_id) REFERENCES merchandise (id)
@@ -93,8 +94,8 @@ def add_merchandise():
     return jsonify({'id': cursor.lastrowid, 'message': 'Merchandise added successfully'})
 
 
-@app.route('/api/merchandise/<int:id>', methods=['PUT'])
-def update_merchandise(id):
+@app.route('/api/merchandise/<int:merchandise_id>', methods=['PUT'])
+def update_merchandise(merchandise_id):
     """Update merchandise"""
     data = request.json
     db = get_db()
@@ -104,18 +105,26 @@ def update_merchandise(id):
         UPDATE merchandise 
         SET name = ?, description = ?, quantity = ?, price = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-    ''', (data['name'], data.get('description', ''), data['quantity'], data['price'], id))
+    ''', (data['name'], data.get('description', ''), data['quantity'], data['price'], merchandise_id))
     
     db.commit()
     return jsonify({'message': 'Merchandise updated successfully'})
 
 
-@app.route('/api/merchandise/<int:id>', methods=['DELETE'])
-def delete_merchandise(id):
+@app.route('/api/merchandise/<int:merchandise_id>', methods=['DELETE'])
+def delete_merchandise(merchandise_id):
     """Delete merchandise"""
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('DELETE FROM merchandise WHERE id = ?', (id,))
+    
+    # Check if merchandise has sales records
+    cursor.execute('SELECT COUNT(*) as count FROM sales WHERE merchandise_id = ?', (merchandise_id,))
+    sales_count = cursor.fetchone()['count']
+    
+    if sales_count > 0:
+        return jsonify({'error': 'Cannot delete merchandise with existing sales records'}), 400
+    
+    cursor.execute('DELETE FROM merchandise WHERE id = ?', (merchandise_id,))
     db.commit()
     return jsonify({'message': 'Merchandise deleted successfully'})
 
@@ -144,9 +153,9 @@ def record_sale():
     # Record sale
     total_price = price * quantity_sold
     cursor.execute('''
-        INSERT INTO sales (merchandise_id, quantity_sold, total_price)
-        VALUES (?, ?, ?)
-    ''', (data['merchandise_id'], quantity_sold, total_price))
+        INSERT INTO sales (merchandise_id, quantity_sold, unit_price, total_price)
+        VALUES (?, ?, ?, ?)
+    ''', (data['merchandise_id'], quantity_sold, price, total_price))
     
     # Update merchandise quantity
     cursor.execute('''
@@ -165,7 +174,7 @@ def get_sales():
     db = get_db()
     cursor = db.cursor()
     cursor.execute('''
-        SELECT s.*, m.name as merchandise_name, m.price as unit_price
+        SELECT s.*, m.name as merchandise_name
         FROM sales s
         JOIN merchandise m ON s.merchandise_id = m.id
         ORDER BY s.sale_date DESC

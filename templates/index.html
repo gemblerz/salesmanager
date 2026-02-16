@@ -258,9 +258,9 @@
         <div id="messageContainer"></div>
 
         <div class="tabs">
-            <button class="tab-button active" onclick="switchTab('merchandise')">Merchandise</button>
-            <button class="tab-button" onclick="switchTab('sales')">Record Sale</button>
-            <button class="tab-button" onclick="switchTab('history')">Sales History</button>
+            <button class="tab-button active" onclick="switchTab('merchandise', event)">Merchandise</button>
+            <button class="tab-button" onclick="switchTab('sales', event)">Record Sale</button>
+            <button class="tab-button" onclick="switchTab('history', event)">Sales History</button>
         </div>
 
         <!-- Merchandise Tab -->
@@ -320,7 +320,7 @@
 
     <script>
         // Tab switching
-        function switchTab(tabName) {
+        function switchTab(tabName, event) {
             const tabs = document.querySelectorAll('.tab-content');
             const buttons = document.querySelectorAll('.tab-button');
             
