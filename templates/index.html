@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sales Manager</title>
+    <title>세일즈 매니저</title>
     <style>
         * {
             margin: 0;
@@ -12,7 +12,7 @@
         }
 
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Noto Sans KR', Arial, sans-serif;
             font-size: 18px;
             line-height: 1.6;
             background-color: #f5f5f5;
@@ -249,63 +249,81 @@
             font-size: 36px;
             font-weight: bold;
         }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        .grid-table th, .grid-table td {
+            border: 1px solid #e0e0e0;
+        }
+
+        .grid-table th {
+            background-color: #f7f7f7;
+            color: #333;
+        }
+
+        .grid-table tr:nth-child(even) {
+            background-color: #fafafa;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📦 Sales Manager</h1>
+        <h1>📦 세일즈 매니저</h1>
         
         <div id="messageContainer"></div>
 
         <div class="tabs">
-            <button class="tab-button active" onclick="switchTab('merchandise', event)">Merchandise</button>
-            <button class="tab-button" onclick="switchTab('sales', event)">Record Sale</button>
-            <button class="tab-button" onclick="switchTab('history', event)">Sales History</button>
+            <button class="tab-button active" onclick="switchTab('merchandise', event)">상품 관리</button>
+            <button class="tab-button" onclick="switchTab('sales', event)">판매 기록</button>
+            <button class="tab-button" onclick="switchTab('history', event)">판매 내역</button>
+            <button class="tab-button" onclick="switchTab('analysis', event)">분석 (스프레드시트)</button>
         </div>
 
         <!-- Merchandise Tab -->
         <div id="merchandise-tab" class="tab-content active">
-            <h2>Add New Merchandise</h2>
+            <h2>신규 상품 등록</h2>
             <form id="merchandiseForm">
                 <div class="form-group">
-                    <label for="name">Item Name:</label>
+                    <label for="name">상품명</label>
                     <input type="text" id="name" name="name" required>
                 </div>
                 <div class="form-group">
-                    <label for="description">Description:</label>
+                    <label for="description">설명</label>
                     <textarea id="description" name="description"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="quantity">Quantity:</label>
+                    <label for="quantity">재고 수량</label>
                     <input type="number" id="quantity" name="quantity" min="0" required>
                 </div>
                 <div class="form-group">
-                    <label for="price">Price per Unit:</label>
+                    <label for="price">단가 (₩)</label>
                     <input type="number" id="price" name="price" min="0" step="0.01" required>
                 </div>
-                <button type="submit">Add Merchandise</button>
-                <button type="button" class="secondary" onclick="resetForm()">Clear Form</button>
+                <button type="submit">상품 추가</button>
+                <button type="button" class="secondary" onclick="resetForm()">폼 초기화</button>
             </form>
 
-            <h2>Current Inventory</h2>
+            <h2>현재 재고</h2>
             <div id="merchandiseList" class="merchandise-list"></div>
         </div>
 
         <!-- Sales Tab -->
         <div id="sales-tab" class="tab-content">
-            <h2>Record a Sale</h2>
+            <h2>판매 등록</h2>
             <form id="salesForm">
                 <div class="form-group">
-                    <label for="saleItem">Select Item:</label>
+                    <label for="saleItem">판매 상품 선택</label>
                     <select id="saleItem" name="merchandise_id" required>
-                        <option value="">-- Choose an item --</option>
+                        <option value="">-- 상품을 선택하세요 --</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="saleQuantity">Quantity Sold:</label>
+                    <label for="saleQuantity">판매 수량</label>
                     <input type="number" id="saleQuantity" name="quantity_sold" min="1" required>
                 </div>
-                <button type="submit">Record Sale</button>
+                <button type="submit">판매 기록</button>
             </form>
 
             <div class="stats" id="statsContainer"></div>
@@ -313,12 +331,26 @@
 
         <!-- History Tab -->
         <div id="history-tab" class="tab-content">
-            <h2>Sales History</h2>
+            <h2>판매 내역</h2>
             <div id="salesHistory"></div>
+        </div>
+
+        <!-- Analysis Tab -->
+        <div id="analysis-tab" class="tab-content">
+            <h2>분석 (스프레드시트 뷰)</h2>
+            <p>상품 정보를 엑셀 표처럼 한눈에 살펴보고, 복사하여 다른 도구(예: Streamlit, 스프레드시트)로 바로 활용할 수 있습니다.</p>
+            <div class="table-wrapper">
+                <div id="analysisTable"></div>
+            </div>
         </div>
     </div>
 
     <script>
+        const numberFormatter = new Intl.NumberFormat('ko-KR');
+
+        const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
+        const formatNumber = (value) => numberFormatter.format(Number(value || 0));
+
         // Tab switching
         function switchTab(tabName, event) {
             const tabs = document.querySelectorAll('.tab-content');
@@ -337,6 +369,8 @@
                 loadStats();
             } else if (tabName === 'history') {
                 loadSalesHistory();
+            } else if (tabName === 'analysis') {
+                loadAnalysisTable();
             }
         }
 
@@ -358,23 +392,23 @@
                 const container = document.getElementById('merchandiseList');
                 
                 if (items.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No merchandise added yet. Add your first item above!</div>';
+                    container.innerHTML = '<div class="empty-state">등록된 상품이 없습니다. 위 폼에서 상품을 추가해 주세요.</div>';
                     return;
                 }
                 
                 container.innerHTML = items.map(item => `
                     <div class="merchandise-item">
                         <h3>${item.name}</h3>
-                        <p><strong>Description:</strong> ${item.description || 'N/A'}</p>
-                        <p><strong>Quantity:</strong> ${item.quantity}</p>
-                        <p><strong>Price:</strong> $${parseFloat(item.price).toFixed(2)}</p>
+                        <p><strong>설명:</strong> ${item.description || '정보 없음'}</p>
+                        <p><strong>재고:</strong> ${formatNumber(item.quantity)}개</p>
+                        <p><strong>단가:</strong> ${formatCurrency(item.price)}</p>
                         <div class="actions">
-                            <button class="danger" onclick="deleteMerchandise(${item.id})">Delete</button>
+                            <button class="danger" onclick="deleteMerchandise(${item.id})">삭제</button>
                         </div>
                     </div>
                 `).join('');
             } catch (error) {
-                showMessage('Error loading merchandise: ' + error.message, 'error');
+                showMessage('상품을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         }
 
@@ -402,8 +436,10 @@
                 showMessage(result.message);
                 resetForm();
                 loadMerchandise();
+                loadMerchandiseForSales();
+                loadAnalysisTable();
             } catch (error) {
-                showMessage('Error adding merchandise: ' + error.message, 'error');
+                showMessage('상품을 추가하는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         });
 
@@ -414,7 +450,7 @@
 
         // Delete merchandise
         async function deleteMerchandise(id) {
-            if (!confirm('Are you sure you want to delete this item?')) {
+            if (!confirm('이 상품을 삭제하시겠습니까?')) {
                 return;
             }
             
@@ -424,10 +460,15 @@
                 });
                 
                 const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '삭제에 실패했습니다');
+                }
                 showMessage(result.message);
                 loadMerchandise();
+                loadMerchandiseForSales();
+                loadAnalysisTable();
             } catch (error) {
-                showMessage('Error deleting merchandise: ' + error.message, 'error');
+                showMessage('상품을 삭제하는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         }
 
@@ -438,12 +479,12 @@
                 const items = await response.json();
                 
                 const select = document.getElementById('saleItem');
-                select.innerHTML = '<option value="">-- Choose an item --</option>' +
+                select.innerHTML = '<option value="">-- 상품을 선택하세요 --</option>' +
                     items.filter(item => item.quantity > 0).map(item => 
-                        `<option value="${item.id}">${item.name} (Available: ${item.quantity})</option>`
+                        `<option value="${item.id}">${item.name} (재고: ${formatNumber(item.quantity)})</option>`
                     ).join('');
             } catch (error) {
-                showMessage('Error loading merchandise: ' + error.message, 'error');
+                showMessage('상품을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         }
 
@@ -471,12 +512,14 @@
                 }
                 
                 const result = await response.json();
-                showMessage(`Sale recorded! Total: $${result.total_price.toFixed(2)}`);
+                showMessage(`판매가 기록되었습니다! 총액: ${formatCurrency(result.total_price)}`);
                 document.getElementById('salesForm').reset();
                 loadMerchandiseForSales();
                 loadStats();
+                loadMerchandise();
+                loadAnalysisTable();
             } catch (error) {
-                showMessage('Error recording sale: ' + error.message, 'error');
+                showMessage('판매를 기록하는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         });
 
@@ -499,24 +542,24 @@
                 const statsContainer = document.getElementById('statsContainer');
                 statsContainer.innerHTML = `
                     <div class="stat-card">
-                        <h3>Total Items</h3>
-                        <div class="value">${totalItems}</div>
+                        <h3>총 상품 종류</h3>
+                        <div class="value">${formatNumber(totalItems)}종</div>
                     </div>
                     <div class="stat-card">
-                        <h3>Total Stock</h3>
-                        <div class="value">${totalStock}</div>
+                        <h3>총 재고 수량</h3>
+                        <div class="value">${formatNumber(totalStock)}개</div>
                     </div>
                     <div class="stat-card">
-                        <h3>Total Sales</h3>
-                        <div class="value">${totalSales}</div>
+                        <h3>총 판매 건수</h3>
+                        <div class="value">${formatNumber(totalSales)}건</div>
                     </div>
                     <div class="stat-card">
-                        <h3>Total Revenue</h3>
-                        <div class="value">$${totalRevenue.toFixed(2)}</div>
+                        <h3>총 매출</h3>
+                        <div class="value">${formatCurrency(totalRevenue)}</div>
                     </div>
                 `;
             } catch (error) {
-                console.error('Error loading stats:', error);
+                console.error('지표를 불러오는 중 오류:', error);
             }
         }
 
@@ -529,7 +572,7 @@
                 const container = document.getElementById('salesHistory');
                 
                 if (sales.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No sales recorded yet.</div>';
+                    container.innerHTML = '<div class="empty-state">아직 판매 내역이 없습니다.</div>';
                     return;
                 }
                 
@@ -537,28 +580,73 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>Item</th>
-                                <th>Quantity</th>
-                                <th>Unit Price</th>
-                                <th>Total</th>
+                                <th>판매일시</th>
+                                <th>상품</th>
+                                <th>수량</th>
+                                <th>단가</th>
+                                <th>총액</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${sales.map(sale => `
                                 <tr>
-                                    <td>${new Date(sale.sale_date).toLocaleString()}</td>
+                                    <td>${new Date(sale.sale_date).toLocaleString('ko-KR')}</td>
                                     <td>${sale.merchandise_name}</td>
-                                    <td>${sale.quantity_sold}</td>
-                                    <td>$${parseFloat(sale.unit_price).toFixed(2)}</td>
-                                    <td>$${parseFloat(sale.total_price).toFixed(2)}</td>
+                                    <td>${formatNumber(sale.quantity_sold)}</td>
+                                    <td>${formatCurrency(sale.unit_price)}</td>
+                                    <td>${formatCurrency(sale.total_price)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 `;
             } catch (error) {
-                showMessage('Error loading sales history: ' + error.message, 'error');
+                showMessage('판매 내역을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+
+        // Analysis table (spreadsheet-like)
+        async function loadAnalysisTable() {
+            try {
+                const response = await fetch('/api/merchandise');
+                const items = await response.json();
+                const container = document.getElementById('analysisTable');
+
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="empty-state">등록된 상품이 없습니다. 먼저 상품을 추가해 주세요.</div>';
+                    return;
+                }
+
+                container.innerHTML = `
+                    <table class="grid-table">
+                        <thead>
+                            <tr>
+                                <th>상품 ID</th>
+                                <th>상품명</th>
+                                <th>설명</th>
+                                <th>재고 수량</th>
+                                <th>단가</th>
+                                <th>등록일</th>
+                                <th>수정일</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(item => `
+                                <tr>
+                                    <td>${item.id}</td>
+                                    <td>${item.name}</td>
+                                    <td>${item.description || '정보 없음'}</td>
+                                    <td>${formatNumber(item.quantity)}</td>
+                                    <td>${formatCurrency(item.price)}</td>
+                                    <td>${item.created_at ? new Date(item.created_at).toLocaleString('ko-KR') : '-'}</td>
+                                    <td>${item.updated_at ? new Date(item.updated_at).toLocaleString('ko-KR') : '-'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                showMessage('분석용 데이터를 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         }
 

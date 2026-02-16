@@ -91,7 +91,7 @@ def add_merchandise():
     ''', (data['name'], data.get('description', ''), data['quantity'], data['price']))
     
     db.commit()
-    return jsonify({'id': cursor.lastrowid, 'message': 'Merchandise added successfully'})
+    return jsonify({'id': cursor.lastrowid, 'message': '상품이 성공적으로 등록되었습니다'})
 
 
 @app.route('/api/merchandise/<int:merchandise_id>', methods=['PUT'])
@@ -108,7 +108,7 @@ def update_merchandise(merchandise_id):
     ''', (data['name'], data.get('description', ''), data['quantity'], data['price'], merchandise_id))
     
     db.commit()
-    return jsonify({'message': 'Merchandise updated successfully'})
+    return jsonify({'message': '상품 정보가 업데이트되었습니다'})
 
 
 @app.route('/api/merchandise/<int:merchandise_id>', methods=['DELETE'])
@@ -122,11 +122,11 @@ def delete_merchandise(merchandise_id):
     sales_count = cursor.fetchone()['count']
     
     if sales_count > 0:
-        return jsonify({'error': 'Cannot delete merchandise with existing sales records'}), 400
+        return jsonify({'error': '판매 이력이 있는 상품은 삭제할 수 없습니다'}), 400
     
     cursor.execute('DELETE FROM merchandise WHERE id = ?', (merchandise_id,))
     db.commit()
-    return jsonify({'message': 'Merchandise deleted successfully'})
+    return jsonify({'message': '상품이 삭제되었습니다'})
 
 
 @app.route('/api/sales', methods=['POST'])
@@ -141,14 +141,14 @@ def record_sale():
     row = cursor.fetchone()
     
     if not row:
-        return jsonify({'error': 'Merchandise not found'}), 404
+        return jsonify({'error': '상품을 찾을 수 없습니다'}), 404
     
     current_quantity = row['quantity']
     price = row['price']
     quantity_sold = data['quantity_sold']
     
     if current_quantity < quantity_sold:
-        return jsonify({'error': 'Insufficient quantity'}), 400
+        return jsonify({'error': '재고가 부족합니다'}), 400
     
     # Record sale
     total_price = price * quantity_sold
@@ -165,7 +165,7 @@ def record_sale():
     ''', (quantity_sold, data['merchandise_id']))
     
     db.commit()
-    return jsonify({'message': 'Sale recorded successfully', 'total_price': total_price})
+    return jsonify({'message': '판매가 기록되었습니다', 'total_price': total_price})
 
 
 @app.route('/api/sales', methods=['GET'])
