@@ -478,6 +478,7 @@
     <script>
         const numberFormatter = new Intl.NumberFormat('ko-KR');
         let saleMerchandiseItems = [];
+        let saleConsumers = [];
 
         const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
         const formatNumber = (value) => numberFormatter.format(Number(value || 0));
@@ -515,6 +516,10 @@
             }, 5000);
         }
 
+        function showErrorMessage(message) {
+            showMessage(message, 'error');
+        }
+
         // Load merchandise
         async function loadMerchandise() {
             try {
@@ -540,7 +545,7 @@
                     </div>
                 `).join('');
             } catch (error) {
-                showMessage('상품을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('상품을 불러오는 중 오류가 발생했습니다.');
             }
         }
 
@@ -571,7 +576,7 @@
                 loadMerchandiseForSales();
                 loadSalesHistory();
             } catch (error) {
-                showMessage('상품을 추가하는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('상품을 추가하는 중 오류가 발생했습니다.');
             }
         });
 
@@ -600,7 +605,7 @@
                 loadMerchandiseForSales();
                 loadSalesHistory();
             } catch (error) {
-                showMessage('상품을 삭제하는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('상품을 삭제하는 중 오류가 발생했습니다.');
             }
         }
 
@@ -628,7 +633,7 @@
                     </div>
                 `).join('');
             } catch (error) {
-                showMessage('소비자 목록을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('소비자 목록을 불러오는 중 오류가 발생했습니다.');
             }
         }
 
@@ -654,7 +659,7 @@
                 loadConsumers();
                 loadConsumersForSales();
             } catch (error) {
-                showMessage('소비자 등록 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('소비자 등록 중 오류가 발생했습니다.');
             }
         });
 
@@ -674,7 +679,7 @@
                 loadConsumers();
                 loadConsumersForSales();
             } catch (error) {
-                showMessage('소비자 삭제 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('소비자 삭제 중 오류가 발생했습니다.');
             }
         }
 
@@ -692,7 +697,7 @@
                     ).join('');
                 renderSelectedProductInfo(saleMerchandiseItems);
             } catch (error) {
-                showMessage('상품을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('상품을 불러오는 중 오류가 발생했습니다.');
             }
         }
 
@@ -712,14 +717,62 @@
         async function loadConsumersForSales() {
             try {
                 const response = await fetch('/api/consumers');
-                const consumers = await response.json();
+                saleConsumers = await response.json();
                 const select = document.getElementById('saleConsumer');
                 select.innerHTML = '<option value="">-- 소비자를 선택하세요 --</option>' +
-                    consumers.map(consumer =>
+                    saleConsumers.map(consumer =>
                         `<option value="${consumer.id}">${consumer.name}${consumer.phone ? ` (${consumer.phone})` : ''}</option>`
                     ).join('');
             } catch (error) {
-                showMessage('소비자 목록을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('소비자 목록을 불러오는 중 오류가 발생했습니다.');
+            }
+        }
+
+        async function editSale(saleId, currentQuantity, currentConsumerId) {
+            const quantityInput = prompt('수정할 판매 수량을 입력하세요.', currentQuantity);
+            if (quantityInput === null) return;
+            const quantity = parseInt(quantityInput, 10);
+            if (!Number.isInteger(quantity) || quantity < 1) {
+                showErrorMessage('판매 수량은 1 이상의 숫자여야 합니다.');
+                return;
+            }
+
+            if (!saleConsumers.length) {
+                await loadConsumersForSales();
+            }
+
+            const consumerGuide = saleConsumers.map(consumer => `${consumer.id}: ${consumer.name}`).join('\n');
+            const consumerInput = prompt(
+                `소비자 ID를 입력하세요.\n${consumerGuide}`,
+                currentConsumerId || ''
+            );
+            if (consumerInput === null) return;
+            const consumerId = parseInt(consumerInput, 10);
+            if (!Number.isInteger(consumerId)) {
+                showErrorMessage('소비자 ID는 숫자로 입력해주세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/sales/${saleId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ quantity_sold: quantity, consumer_id: consumerId })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '판매 기록 수정에 실패했습니다.');
+                }
+                showMessage(result.message);
+                loadMerchandise();
+                loadMerchandiseForSales();
+                loadConsumersForSales();
+                loadStats();
+                loadSalesHistory();
+            } catch (error) {
+                showErrorMessage(error.message || '판매 기록 수정 중 오류가 발생했습니다.');
             }
         }
 
@@ -760,7 +813,7 @@
                 loadMerchandise();
                 loadSalesHistory();
             } catch (error) {
-                showMessage('판매를 기록하는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('판매를 기록하는 중 오류가 발생했습니다.');
             }
         });
 
@@ -828,6 +881,7 @@
                                 <th>수량</th>
                                 <th>단가</th>
                                 <th>총액</th>
+                                <th>관리</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -839,17 +893,26 @@
                                     <td>${formatNumber(sale.quantity_sold)}</td>
                                     <td>${formatCurrency(sale.unit_price)}</td>
                                     <td>${formatCurrency(sale.total_price)}</td>
+                                    <td><button type="button" class="secondary" onclick="editSale(${sale.id}, ${sale.quantity_sold}, ${sale.consumer_id === null ? 'null' : sale.consumer_id})">수정</button></td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 `;
             } catch (error) {
-                showMessage('판매 내역을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+                showErrorMessage('판매 내역을 불러오는 중 오류가 발생했습니다.');
             }
         }
 
         document.getElementById('historyPeriod').addEventListener('change', loadSalesHistory);
+
+        document.querySelectorAll('input[required], select[required], textarea[required]').forEach((field) => {
+            field.addEventListener('invalid', () => {
+                field.setCustomValidity(field.tagName === 'SELECT' ? '목록에서 항목을 선택해주세요.' : '필수 항목을 입력해주세요.');
+            });
+            field.addEventListener('input', () => field.setCustomValidity(''));
+            field.addEventListener('change', () => field.setCustomValidity(''));
+        });
 
         // Load initial data
         loadMerchandise();

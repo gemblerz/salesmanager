@@ -78,6 +78,19 @@ def init_db():
         sales_columns = [row['name'] for row in cursor.fetchall()]
         if 'consumer_id' not in sales_columns:
             cursor.execute('ALTER TABLE sales ADD COLUMN consumer_id INTEGER')
+
+        cursor.execute('PRAGMA table_info(consumers)')
+        consumer_columns = [row['name'] for row in cursor.fetchall()]
+        if 'phone' not in consumer_columns:
+            cursor.execute('ALTER TABLE consumers ADD COLUMN phone TEXT')
+        if 'address' not in consumer_columns:
+            cursor.execute('ALTER TABLE consumers ADD COLUMN address TEXT')
+        if 'notes' not in consumer_columns:
+            cursor.execute('ALTER TABLE consumers ADD COLUMN notes TEXT')
+        if 'created_at' not in consumer_columns:
+            cursor.execute('ALTER TABLE consumers ADD COLUMN created_at TIMESTAMP')
+        if 'updated_at' not in consumer_columns:
+            cursor.execute('ALTER TABLE consumers ADD COLUMN updated_at TIMESTAMP')
         
         db.commit()
 
@@ -251,6 +264,53 @@ def get_sales():
     cursor.execute(query, params)
     sales = [dict(row) for row in cursor.fetchall()]
     return jsonify(sales)
+
+
+@app.route('/api/sales/<int:sale_id>', methods=['PUT'])
+def update_sale(sale_id):
+    """Update a sale record"""
+    data = request.json
+    db = get_db()
+    cursor = db.cursor()
+
+    quantity_sold = data.get('quantity_sold')
+    consumer_id = data.get('consumer_id')
+    if not isinstance(quantity_sold, int) or quantity_sold <= 0:
+        return jsonify({'error': '판매 수량은 1 이상이어야 합니다'}), 400
+    if consumer_id is None:
+        return jsonify({'error': '소비자를 선택해주세요'}), 400
+
+    cursor.execute('SELECT id FROM consumers WHERE id = ?', (consumer_id,))
+    if not cursor.fetchone():
+        return jsonify({'error': '소비자를 찾을 수 없습니다'}), 404
+
+    cursor.execute('SELECT merchandise_id, quantity_sold, unit_price FROM sales WHERE id = ?', (sale_id,))
+    sale = cursor.fetchone()
+    if not sale:
+        return jsonify({'error': '판매 기록을 찾을 수 없습니다'}), 404
+
+    quantity_diff = quantity_sold - sale['quantity_sold']
+    if quantity_diff > 0:
+        cursor.execute('SELECT quantity FROM merchandise WHERE id = ?', (sale['merchandise_id'],))
+        merchandise = cursor.fetchone()
+        if not merchandise or merchandise['quantity'] < quantity_diff:
+            return jsonify({'error': '재고가 부족합니다'}), 400
+
+    cursor.execute('''
+        UPDATE merchandise
+        SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    ''', (quantity_diff, sale['merchandise_id']))
+
+    total_price = sale['unit_price'] * quantity_sold
+    cursor.execute('''
+        UPDATE sales
+        SET consumer_id = ?, quantity_sold = ?, total_price = ?
+        WHERE id = ?
+    ''', (consumer_id, quantity_sold, total_price, sale_id))
+
+    db.commit()
+    return jsonify({'message': '판매 기록이 수정되었습니다', 'total_price': total_price})
 
 
 @app.route('/api/consumers', methods=['GET'])
