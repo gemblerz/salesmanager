@@ -42,6 +42,6 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-python app.py
+gunicorn --bind 127.0.0.1:5000 app:app
 
 pause

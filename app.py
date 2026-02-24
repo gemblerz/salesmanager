@@ -1,9 +1,8 @@
 """
 Sales Manager - A simple merchandise management system
 """
-import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g
 
 app = Flask(__name__)
@@ -60,6 +59,9 @@ def init_db():
         ''')
         
         db.commit()
+
+
+init_db()
 
 
 @app.route('/')
@@ -173,21 +175,51 @@ def get_sales():
     """Get sales history"""
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('''
+    period = request.args.get('period', 'all')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    query = '''
         SELECT s.*, m.name as merchandise_name
         FROM sales s
         JOIN merchandise m ON s.merchandise_id = m.id
-        ORDER BY s.sale_date DESC
-    ''')
+    '''
+    conditions = []
+    params = []
+
+    if period == 'last_month':
+        first_day_this_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_day_last_month = first_day_this_month - timedelta(seconds=1)
+        first_day_last_month = last_day_last_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        conditions.append('s.sale_date >= ? AND s.sale_date <= ?')
+        params.extend([
+            first_day_last_month.strftime('%Y-%m-%d %H:%M:%S'),
+            last_day_last_month.strftime('%Y-%m-%d %H:%M:%S')
+        ])
+    elif period == 'this_month':
+        first_day_this_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        conditions.append('s.sale_date >= ?')
+        params.append(first_day_this_month.strftime('%Y-%m-%d %H:%M:%S'))
+    elif period == 'last_30_days':
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        conditions.append('s.sale_date >= ?')
+        params.append(thirty_days_ago.strftime('%Y-%m-%d %H:%M:%S'))
+
+    if start_date:
+        conditions.append('s.sale_date >= ?')
+        params.append(f'{start_date} 00:00:00')
+    if end_date:
+        conditions.append('s.sale_date <= ?')
+        params.append(f'{end_date} 23:59:59')
+
+    if conditions:
+        query += ' WHERE ' + ' AND '.join(conditions)
+
+    query += ' ORDER BY s.sale_date DESC'
+    cursor.execute(query, params)
     sales = [dict(row) for row in cursor.fetchall()]
     return jsonify(sales)
 
 
 if __name__ == '__main__':
-    if not os.path.exists(DATABASE):
-        init_db()
-        print('Database initialized')
-    
-    # Only enable debug mode if DEBUG environment variable is set
-    debug_mode = os.environ.get('DEBUG', 'False').lower() == 'true'
-    app.run(debug=debug_mode, host='127.0.0.1', port=5000)
+    app.run(host='127.0.0.1', port=5000)
