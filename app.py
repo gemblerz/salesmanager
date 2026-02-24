@@ -45,18 +45,39 @@ def init_db():
             )
         ''')
         
+        # Create consumers table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS consumers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT,
+                address TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # Create sales table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS sales (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 merchandise_id INTEGER NOT NULL,
+                consumer_id INTEGER,
                 quantity_sold INTEGER NOT NULL,
                 unit_price REAL NOT NULL,
                 total_price REAL NOT NULL,
                 sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (merchandise_id) REFERENCES merchandise (id)
+                FOREIGN KEY (merchandise_id) REFERENCES merchandise (id),
+                FOREIGN KEY (consumer_id) REFERENCES consumers (id)
             )
         ''')
+
+        # Backward-compatible migrations for older DBs
+        cursor.execute('PRAGMA table_info(sales)')
+        sales_columns = [row['name'] for row in cursor.fetchall()]
+        if 'consumer_id' not in sales_columns:
+            cursor.execute('ALTER TABLE sales ADD COLUMN consumer_id INTEGER')
         
         db.commit()
 
@@ -145,6 +166,13 @@ def record_sale():
     current_quantity = row['quantity']
     price = row['price']
     quantity_sold = data['quantity_sold']
+    consumer_id = data.get('consumer_id')
+    if consumer_id is None:
+        return jsonify({'error': '소비자를 선택해주세요'}), 400
+
+    cursor.execute('SELECT id FROM consumers WHERE id = ?', (consumer_id,))
+    if not cursor.fetchone():
+        return jsonify({'error': '소비자를 찾을 수 없습니다'}), 404
     
     if current_quantity < quantity_sold:
         return jsonify({'error': '재고가 부족합니다'}), 400
@@ -152,9 +180,9 @@ def record_sale():
     # Record sale
     total_price = price * quantity_sold
     cursor.execute('''
-        INSERT INTO sales (merchandise_id, quantity_sold, unit_price, total_price)
-        VALUES (?, ?, ?, ?)
-    ''', (data['merchandise_id'], quantity_sold, price, total_price))
+        INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (data['merchandise_id'], consumer_id, quantity_sold, price, total_price))
     
     # Update merchandise quantity
     cursor.execute('''
@@ -177,9 +205,11 @@ def get_sales():
     end_date = request.args.get('end_date')
 
     query = '''
-        SELECT s.*, m.name as merchandise_name
+        SELECT s.*, m.name as merchandise_name, m.description as merchandise_description,
+               c.name as consumer_name, c.phone as consumer_phone, c.address as consumer_address
         FROM sales s
         JOIN merchandise m ON s.merchandise_id = m.id
+        LEFT JOIN consumers c ON s.consumer_id = c.id
     '''
     conditions = []
     params = []
@@ -221,6 +251,48 @@ def get_sales():
     cursor.execute(query, params)
     sales = [dict(row) for row in cursor.fetchall()]
     return jsonify(sales)
+
+
+@app.route('/api/consumers', methods=['GET'])
+def get_consumers():
+    """Get all consumers"""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        SELECT id, name, phone, address, notes, created_at, updated_at
+        FROM consumers
+        ORDER BY name, id
+    ''')
+    consumers = [dict(row) for row in cursor.fetchall()]
+    return jsonify(consumers)
+
+
+@app.route('/api/consumers', methods=['POST'])
+def add_consumer():
+    """Add new consumer"""
+    data = request.json
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        INSERT INTO consumers (name, phone, address, notes)
+        VALUES (?, ?, ?, ?)
+    ''', (data['name'], data.get('phone', ''), data.get('address', ''), data.get('notes', '')))
+    db.commit()
+    return jsonify({'id': cursor.lastrowid, 'message': '소비자가 성공적으로 등록되었습니다'})
+
+
+@app.route('/api/consumers/<int:consumer_id>', methods=['DELETE'])
+def delete_consumer(consumer_id):
+    """Delete consumer"""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('SELECT COUNT(*) as count FROM sales WHERE consumer_id = ?', (consumer_id,))
+    sales_count = cursor.fetchone()['count']
+    if sales_count > 0:
+        return jsonify({'error': '판매 이력이 있는 소비자는 삭제할 수 없습니다'}), 400
+    cursor.execute('DELETE FROM consumers WHERE id = ?', (consumer_id,))
+    db.commit()
+    return jsonify({'message': '소비자가 삭제되었습니다'})
 
 
 if __name__ == '__main__':
