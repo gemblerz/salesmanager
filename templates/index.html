@@ -893,7 +893,7 @@
                                     <td>${formatNumber(sale.quantity_sold)}</td>
                                     <td>${formatCurrency(sale.unit_price)}</td>
                                     <td>${formatCurrency(sale.total_price)}</td>
-                                    <td><button type="button" class="secondary" onclick="editSale(${sale.id}, ${sale.quantity_sold}, ${sale.consumer_id === null ? 'null' : sale.consumer_id})">수정</button></td>
+                                    <td><button type="button" class="secondary" onclick="editSale(${sale.id}, ${sale.quantity_sold}, ${sale.consumer_id ?? 'null'})">수정</button></td>
                                 </tr>
                             `).join('')}
                         </tbody>
