@@ -5,9 +5,10 @@ A simple, user-friendly web application for managing merchandise inventory and t
 ## Features
 
 - **Merchandise Management**: Add, view, and delete merchandise items
+- **Consumer Management**: Add, view, and delete consumers (name, phone, address, notes)
 - **Inventory Tracking**: Monitor stock quantities in real-time
-- **Sales Recording**: Record sales transactions and automatically update inventory
-- **Sales History**: View complete sales history with detailed information
+- **Sales Recording**: Record sales transactions with both product and consumer selection
+- **Sales History**: View complete sales history with period filters and consumer information
 - **Statistics Dashboard**: Track total items, stock, sales, and revenue
 - **Database Backup**: All data is stored in a SQLite database (salesmanager.db)
 
@@ -77,20 +78,22 @@ By default, the application runs in production mode using Gunicorn.
 ### Recording a Sale
 
 1. Click the "Record Sale" tab
-2. Select an item from the dropdown (only items with available stock)
-3. Enter the quantity sold
-4. Click "Record Sale"
-5. The inventory will automatically update
+2. Select an item from the dropdown (shows stock, price, and ID to disambiguate duplicate names)
+3. Select the consumer
+4. Enter the quantity sold
+5. Click "Record Sale"
+6. The inventory will automatically update
 
 ### Viewing Sales History
 
 1. Click the "Sales History" tab
 2. View all past sales with:
-   - Date and time
-   - Item name
-   - Quantity sold
-   - Unit price
-   - Total price
+    - Date and time
+    - Item name
+    - Consumer name
+    - Quantity sold
+    - Unit price
+    - Total price
 
 ## Database
 

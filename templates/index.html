@@ -166,6 +166,14 @@
             border-left: 5px solid #4CAF50;
         }
 
+        .consumer-item {
+            background: #f9f9f9;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border-left: 5px solid #2196F3;
+        }
+
         .merchandise-item h3 {
             font-size: 24px;
             margin-bottom: 10px;
@@ -282,6 +290,15 @@
             flex-wrap: wrap;
         }
 
+        .selected-product-info {
+            margin-top: 12px;
+            padding: 14px;
+            background-color: #f7f7f7;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            color: #333;
+        }
+
         .analysis-controls .form-group {
             margin-bottom: 0;
             min-width: 220px;
@@ -353,9 +370,9 @@
 
         <div class="tabs">
             <button class="tab-button active" onclick="switchTab('merchandise', event)">상품 관리</button>
+            <button class="tab-button" onclick="switchTab('consumers', event)">소비자 관리</button>
             <button class="tab-button" onclick="switchTab('sales', event)">판매 기록</button>
             <button class="tab-button" onclick="switchTab('history', event)">판매 내역</button>
-            <button class="tab-button" onclick="switchTab('analysis', event)">분석 (스프레드시트)</button>
         </div>
 
         <!-- Merchandise Tab -->
@@ -386,6 +403,33 @@
             <div id="merchandiseList" class="merchandise-list"></div>
         </div>
 
+        <!-- Consumers Tab -->
+        <div id="consumers-tab" class="tab-content">
+            <h2>소비자 등록</h2>
+            <form id="consumerForm">
+                <div class="form-group">
+                    <label for="consumerName">이름</label>
+                    <input type="text" id="consumerName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="consumerPhone">전화번호</label>
+                    <input type="text" id="consumerPhone" name="phone">
+                </div>
+                <div class="form-group">
+                    <label for="consumerAddress">주소</label>
+                    <input type="text" id="consumerAddress" name="address">
+                </div>
+                <div class="form-group">
+                    <label for="consumerNotes">기타 정보</label>
+                    <textarea id="consumerNotes" name="notes"></textarea>
+                </div>
+                <button type="submit">소비자 추가</button>
+            </form>
+
+            <h2>소비자 목록</h2>
+            <div id="consumerList" class="merchandise-list"></div>
+        </div>
+
         <!-- Sales Tab -->
         <div id="sales-tab" class="tab-content">
             <h2>판매 등록</h2>
@@ -394,6 +438,13 @@
                     <label for="saleItem">판매 상품 선택</label>
                     <select id="saleItem" name="merchandise_id" required>
                         <option value="">-- 상품을 선택하세요 --</option>
+                    </select>
+                    <div id="selectedProductInfo" class="selected-product-info">상품을 선택하면 상세 정보가 표시됩니다.</div>
+                </div>
+                <div class="form-group">
+                    <label for="saleConsumer">소비자 선택</label>
+                    <select id="saleConsumer" name="consumer_id" required>
+                        <option value="">-- 소비자를 선택하세요 --</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -409,17 +460,10 @@
         <!-- History Tab -->
         <div id="history-tab" class="tab-content">
             <h2>판매 내역</h2>
-            <div id="salesHistory"></div>
-        </div>
-
-        <!-- Analysis Tab -->
-        <div id="analysis-tab" class="tab-content">
-            <h2>분석 (스프레드시트 뷰)</h2>
-            <p>기간별 판매 항목을 표 형태로 확인할 수 있습니다.</p>
             <div class="analysis-controls">
                 <div class="form-group">
-                    <label for="analysisPeriod">조회 기간</label>
-                    <select id="analysisPeriod">
+                    <label for="historyPeriod">조회 기간</label>
+                    <select id="historyPeriod">
                         <option value="all">전체 기간</option>
                         <option value="this_month">이번 달</option>
                         <option value="last_month">지난 달</option>
@@ -427,14 +471,13 @@
                     </select>
                 </div>
             </div>
-            <div class="table-wrapper">
-                <div id="analysisTable"></div>
-            </div>
+            <div id="salesHistory"></div>
         </div>
     </div>
 
     <script>
         const numberFormatter = new Intl.NumberFormat('ko-KR');
+        let saleMerchandiseItems = [];
 
         const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
         const formatNumber = (value) => numberFormatter.format(Number(value || 0));
@@ -452,13 +495,14 @@
             
             if (tabName === 'merchandise') {
                 loadMerchandise();
+            } else if (tabName === 'consumers') {
+                loadConsumers();
             } else if (tabName === 'sales') {
                 loadMerchandiseForSales();
+                loadConsumersForSales();
                 loadStats();
             } else if (tabName === 'history') {
                 loadSalesHistory();
-            } else if (tabName === 'analysis') {
-                loadAnalysisTable();
             }
         }
 
@@ -525,7 +569,7 @@
                 resetForm();
                 loadMerchandise();
                 loadMerchandiseForSales();
-                loadAnalysisTable();
+                loadSalesHistory();
             } catch (error) {
                 showMessage('상품을 추가하는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
@@ -554,9 +598,83 @@
                 showMessage(result.message);
                 loadMerchandise();
                 loadMerchandiseForSales();
-                loadAnalysisTable();
+                loadSalesHistory();
             } catch (error) {
                 showMessage('상품을 삭제하는 중 오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+
+        // Load consumers
+        async function loadConsumers() {
+            try {
+                const response = await fetch('/api/consumers');
+                const consumers = await response.json();
+                const container = document.getElementById('consumerList');
+
+                if (consumers.length === 0) {
+                    container.innerHTML = '<div class="empty-state">등록된 소비자가 없습니다.</div>';
+                    return;
+                }
+
+                container.innerHTML = consumers.map(consumer => `
+                    <div class="consumer-item">
+                        <h3>${consumer.name}</h3>
+                        <p><strong>전화번호:</strong> ${consumer.phone || '정보 없음'}</p>
+                        <p><strong>주소:</strong> ${consumer.address || '정보 없음'}</p>
+                        <p><strong>기타 정보:</strong> ${consumer.notes || '정보 없음'}</p>
+                        <div class="actions">
+                            <button class="danger" onclick="deleteConsumer(${consumer.id})">삭제</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                showMessage('소비자 목록을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+
+        document.getElementById('consumerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = {
+                name: document.getElementById('consumerName').value,
+                phone: document.getElementById('consumerPhone').value,
+                address: document.getElementById('consumerAddress').value,
+                notes: document.getElementById('consumerNotes').value
+            };
+            try {
+                const response = await fetch('/api/consumers', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+                showMessage(result.message);
+                document.getElementById('consumerForm').reset();
+                loadConsumers();
+                loadConsumersForSales();
+            } catch (error) {
+                showMessage('소비자 등록 중 오류가 발생했습니다: ' + error.message, 'error');
+            }
+        });
+
+        async function deleteConsumer(id) {
+            if (!confirm('이 소비자를 삭제하시겠습니까?')) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/consumers/${id}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '삭제에 실패했습니다');
+                }
+                showMessage(result.message);
+                loadConsumers();
+                loadConsumersForSales();
+            } catch (error) {
+                showMessage('소비자 삭제 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         }
 
@@ -567,14 +685,47 @@
                 const items = await response.json();
                 
                 const select = document.getElementById('saleItem');
+                saleMerchandiseItems = items.filter(item => item.quantity > 0);
                 select.innerHTML = '<option value="">-- 상품을 선택하세요 --</option>' +
-                    items.filter(item => item.quantity > 0).map(item => 
-                        `<option value="${item.id}">${item.name} (재고: ${formatNumber(item.quantity)})</option>`
+                    saleMerchandiseItems.map(item =>
+                        `<option value="${item.id}">${item.name} (${item.description || '설명 없음'}) - 단가 ${formatCurrency(item.price)} (재고 ${formatNumber(item.quantity)}, ID ${item.id})</option>`
                     ).join('');
+                renderSelectedProductInfo(saleMerchandiseItems);
             } catch (error) {
                 showMessage('상품을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
         }
+
+        function renderSelectedProductInfo(items) {
+            const selectedId = parseInt(document.getElementById('saleItem').value);
+            const selected = items.find(item => item.id === selectedId);
+            const info = document.getElementById('selectedProductInfo');
+            if (!selected) {
+                info.textContent = '상품을 선택하면 상세 정보가 표시됩니다.';
+                return;
+            }
+            info.innerHTML = `<strong>선택 상품:</strong> ${selected.name} (ID ${selected.id})<br>
+                <strong>설명:</strong> ${selected.description || '설명 없음'}<br>
+                <strong>단가:</strong> ${formatCurrency(selected.price)} / <strong>재고:</strong> ${formatNumber(selected.quantity)}개`;
+        }
+
+        async function loadConsumersForSales() {
+            try {
+                const response = await fetch('/api/consumers');
+                const consumers = await response.json();
+                const select = document.getElementById('saleConsumer');
+                select.innerHTML = '<option value="">-- 소비자를 선택하세요 --</option>' +
+                    consumers.map(consumer =>
+                        `<option value="${consumer.id}">${consumer.name}${consumer.phone ? ` (${consumer.phone})` : ''}</option>`
+                    ).join('');
+            } catch (error) {
+                showMessage('소비자 목록을 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
+            }
+        }
+
+        document.getElementById('saleItem').addEventListener('change', () => {
+            renderSelectedProductInfo(saleMerchandiseItems);
+        });
 
         // Record sale
         document.getElementById('salesForm').addEventListener('submit', async (e) => {
@@ -582,6 +733,7 @@
             
             const formData = {
                 merchandise_id: parseInt(document.getElementById('saleItem').value),
+                consumer_id: parseInt(document.getElementById('saleConsumer').value),
                 quantity_sold: parseInt(document.getElementById('saleQuantity').value)
             };
             
@@ -603,9 +755,10 @@
                 showMessage(`판매가 기록되었습니다! 총액: ${formatCurrency(result.total_price)}`);
                 document.getElementById('salesForm').reset();
                 loadMerchandiseForSales();
+                loadConsumersForSales();
                 loadStats();
                 loadMerchandise();
-                loadAnalysisTable();
+                loadSalesHistory();
             } catch (error) {
                 showMessage('판매를 기록하는 중 오류가 발생했습니다: ' + error.message, 'error');
             }
@@ -654,7 +807,8 @@
         // Load sales history
         async function loadSalesHistory() {
             try {
-                const response = await fetch('/api/sales');
+                const period = document.getElementById('historyPeriod').value;
+                const response = await fetch(`/api/sales?period=${encodeURIComponent(period)}`);
                 const sales = await response.json();
                 
                 const container = document.getElementById('salesHistory');
@@ -670,6 +824,7 @@
                             <tr>
                                 <th>판매일시</th>
                                 <th>상품</th>
+                                <th>소비자</th>
                                 <th>수량</th>
                                 <th>단가</th>
                                 <th>총액</th>
@@ -679,7 +834,8 @@
                             ${sales.map(sale => `
                                 <tr>
                                     <td>${new Date(sale.sale_date).toLocaleString('ko-KR')}</td>
-                                    <td>${sale.merchandise_name}</td>
+                                    <td>${sale.merchandise_name}${sale.merchandise_description ? ` (${sale.merchandise_description})` : ''}</td>
+                                    <td>${sale.consumer_name || '미지정'}</td>
                                     <td>${formatNumber(sale.quantity_sold)}</td>
                                     <td>${formatCurrency(sale.unit_price)}</td>
                                     <td>${formatCurrency(sale.total_price)}</td>
@@ -693,51 +849,7 @@
             }
         }
 
-        // Analysis table (spreadsheet-like)
-        async function loadAnalysisTable() {
-            try {
-                const period = document.getElementById('analysisPeriod').value;
-                const response = await fetch(`/api/sales?period=${encodeURIComponent(period)}`);
-                const sales = await response.json();
-                const container = document.getElementById('analysisTable');
-
-                if (sales.length === 0) {
-                    container.innerHTML = '<div class="empty-state">선택한 기간의 판매 내역이 없습니다.</div>';
-                    return;
-                }
-
-                container.innerHTML = `
-                    <table class="grid-table">
-                        <thead>
-                            <tr>
-                                <th>판매 ID</th>
-                                <th>상품명</th>
-                                <th>판매 수량</th>
-                                <th>단가</th>
-                                <th>총액</th>
-                                <th>판매일</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${sales.map(sale => `
-                                <tr>
-                                    <td>${sale.id}</td>
-                                    <td>${sale.merchandise_name}</td>
-                                    <td>${formatNumber(sale.quantity_sold)}</td>
-                                    <td>${formatCurrency(sale.unit_price)}</td>
-                                    <td>${formatCurrency(sale.total_price)}</td>
-                                    <td>${new Date(sale.sale_date).toLocaleString('ko-KR')}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-            } catch (error) {
-                showMessage('분석용 데이터를 불러오는 중 오류가 발생했습니다: ' + error.message, 'error');
-            }
-        }
-
-        document.getElementById('analysisPeriod').addEventListener('change', loadAnalysisTable);
+        document.getElementById('historyPeriod').addEventListener('change', loadSalesHistory);
 
         // Load initial data
         loadMerchandise();
