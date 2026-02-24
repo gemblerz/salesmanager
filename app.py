@@ -187,7 +187,19 @@ def get_sales():
     conditions = []
     params = []
 
-    if period == 'last_month':
+    if start_date or end_date:
+        try:
+            if start_date:
+                start = datetime.strptime(start_date, '%Y-%m-%d')
+                conditions.append('s.sale_date >= ?')
+                params.append(start.strftime('%Y-%m-%d 00:00:00'))
+            if end_date:
+                end = datetime.strptime(end_date, '%Y-%m-%d')
+                conditions.append('s.sale_date <= ?')
+                params.append(end.strftime('%Y-%m-%d 23:59:59'))
+        except ValueError:
+            return jsonify({'error': '잘못된 날짜 형식입니다. YYYY-MM-DD 형식을 사용하세요.'}), 400
+    elif period == 'last_month':
         first_day_this_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         last_day_last_month = first_day_this_month - timedelta(seconds=1)
         first_day_last_month = last_day_last_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -204,13 +216,6 @@ def get_sales():
         thirty_days_ago = datetime.now() - timedelta(days=30)
         conditions.append('s.sale_date >= ?')
         params.append(thirty_days_ago.strftime('%Y-%m-%d %H:%M:%S'))
-
-    if start_date:
-        conditions.append('s.sale_date >= ?')
-        params.append(f'{start_date} 00:00:00')
-    if end_date:
-        conditions.append('s.sale_date <= ?')
-        params.append(f'{end_date} 23:59:59')
 
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
