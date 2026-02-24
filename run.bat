@@ -42,6 +42,20 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-python app.py
+where gunicorn >nul 2>&1
+if errorlevel 1 (
+    echo Gunicorn is not available on this environment. Falling back to python app.py
+    python app.py
+    goto :end
+)
+
+python -c "from app import init_db; init_db()"
+if errorlevel 1 (
+    echo Error: Database initialization failed.
+    pause
+    exit /b 1
+)
+gunicorn --bind 127.0.0.1:5000 app:app
+:end
 
 pause

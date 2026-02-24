@@ -55,23 +55,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Run the application
-python app.py
+gunicorn --bind 127.0.0.1:5000 app:app
 ```
 
 ### Debug Mode
 
-By default, the application runs in production mode (debug disabled for security). To enable debug mode during development:
-
-**Windows:**
-```batch
-set DEBUG=true
-python app.py
-```
-
-**Linux/Mac:**
-```bash
-DEBUG=true python app.py
-```
+By default, the application runs in production mode using Gunicorn.
 
 ## Usage
 
@@ -126,9 +115,9 @@ Press `Ctrl+C` in the terminal/command prompt where the application is running.
 
 ## Troubleshooting
 
-**Port already in use**: If port 5000 is already in use, edit `app.py` and change the port number in the last line:
-```python
-app.run(debug=True, host='127.0.0.1', port=5001)  # Change to different port
+**Port already in use**: If port 5000 is already in use, run Gunicorn with a different port:
+```bash
+gunicorn --bind 127.0.0.1:5001 app:app
 ```
 
 **Database locked error**: Close any other instances of the application that might be accessing the database.

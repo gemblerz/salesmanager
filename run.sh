@@ -42,4 +42,5 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-python3 app.py
+python3 -c "from app import init_db; init_db()" || { echo "Error: Database initialization failed."; exit 1; }
+gunicorn --bind 127.0.0.1:5000 app:app
