@@ -1,7 +1,6 @@
 """
 Sales Manager - A simple merchandise management system
 """
-import os
 import sqlite3
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g
@@ -60,10 +59,6 @@ def init_db():
         ''')
         
         db.commit()
-
-
-if not os.path.exists(DATABASE):
-    init_db()
 
 
 @app.route('/')
@@ -229,4 +224,5 @@ def get_sales():
 
 
 if __name__ == '__main__':
+    init_db()
     app.run(host='127.0.0.1', port=5000)

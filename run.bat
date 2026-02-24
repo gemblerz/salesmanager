@@ -49,6 +49,7 @@ if errorlevel 1 (
     goto :end
 )
 
+python -c "from app import init_db; init_db()"
 gunicorn --bind 127.0.0.1:5000 app:app
 :end
 
