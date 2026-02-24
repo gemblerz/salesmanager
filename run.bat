@@ -50,6 +50,11 @@ if errorlevel 1 (
 )
 
 python -c "from app import init_db; init_db()"
+if errorlevel 1 (
+    echo Error: Database initialization failed.
+    pause
+    exit /b 1
+)
 gunicorn --bind 127.0.0.1:5000 app:app
 :end
 
