@@ -42,6 +42,14 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
+where gunicorn >nul 2>&1
+if errorlevel 1 (
+    echo Gunicorn is not available on this environment. Falling back to python app.py
+    python app.py
+    goto :end
+)
+
 gunicorn --bind 127.0.0.1:5000 app:app
+:end
 
 pause
