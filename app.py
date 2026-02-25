@@ -95,6 +95,14 @@ def init_db():
         db.commit()
 
 
+@app.before_request
+def ensure_db_initialized():
+    """Ensure required DB tables exist before handling requests"""
+    if not app.config.get('_DB_INITIALIZED', False):
+        init_db()
+        app.config['_DB_INITIALIZED'] = True
+
+
 @app.route('/')
 def index():
     """Main page"""

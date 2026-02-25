@@ -105,5 +105,32 @@ class SalesManagerTestCase(unittest.TestCase):
         self.assertEqual(sale['total_price'], 500.0)
 
 
+class SalesManagerAutoInitTestCase(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.temp_dir.name, 'auto-init.db')
+        salesmanager.DATABASE = self.db_path
+        salesmanager.app.config['TESTING'] = True
+        salesmanager.app.config['_DB_INITIALIZED'] = False
+        self.client = salesmanager.app.test_client()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_add_consumer_creates_missing_tables_automatically(self):
+        response = self.client.post('/api/consumers', json={'name': '신규소비자'})
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            consumers = db.execute('SELECT name FROM consumers').fetchall()
+            merchandise = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='merchandise'").fetchone()
+            sales = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sales'").fetchone()
+
+        self.assertEqual(consumers[0]['name'], '신규소비자')
+        self.assertIsNotNone(merchandise)
+        self.assertIsNotNone(sales)
+
+
 if __name__ == '__main__':
     unittest.main()
