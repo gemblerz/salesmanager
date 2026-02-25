@@ -373,6 +373,7 @@
             <button class="tab-button" onclick="switchTab('consumers', event)">소비자 관리</button>
             <button class="tab-button" onclick="switchTab('sales', event)">판매 기록</button>
             <button class="tab-button" onclick="switchTab('history', event)">판매 내역</button>
+            <button class="tab-button" onclick="switchTab('config', event)">설정</button>
         </div>
 
         <!-- Merchandise Tab -->
@@ -400,6 +401,10 @@
             </form>
 
             <h2>현재 재고</h2>
+            <div class="form-group">
+                <label for="merchandiseSearch">상품 검색</label>
+                <input type="text" id="merchandiseSearch" placeholder="상품명 또는 설명으로 검색">
+            </div>
             <div id="merchandiseList" class="merchandise-list"></div>
         </div>
 
@@ -427,6 +432,10 @@
             </form>
 
             <h2>소비자 목록</h2>
+            <div class="form-group">
+                <label for="consumerSearch">소비자 검색</label>
+                <input type="text" id="consumerSearch" placeholder="이름, 전화번호, 주소, 기타 정보 검색">
+            </div>
             <div id="consumerList" class="merchandise-list"></div>
         </div>
 
@@ -453,8 +462,6 @@
                 </div>
                 <button type="submit">판매 기록</button>
             </form>
-
-            <div class="stats" id="statsContainer"></div>
         </div>
 
         <!-- History Tab -->
@@ -471,7 +478,21 @@
                     </select>
                 </div>
             </div>
+            <div class="stats" id="statsContainer"></div>
             <div id="salesHistory"></div>
+        </div>
+
+        <!-- Config Tab -->
+        <div id="config-tab" class="tab-content">
+            <h2>설정</h2>
+            <button type="button" onclick="backupDatabase()">데이터베이스 백업</button>
+            <form id="restoreForm" style="margin-top: 20px;">
+                <div class="form-group">
+                    <label for="restoreFile">데이터베이스 복원 파일</label>
+                    <input type="file" id="restoreFile" name="database" accept=".db,.sqlite,.sqlite3" required>
+                </div>
+                <button type="submit">데이터베이스 복원</button>
+            </form>
         </div>
     </div>
 
@@ -479,6 +500,9 @@
         const numberFormatter = new Intl.NumberFormat('ko-KR');
         let saleMerchandiseItems = [];
         let saleConsumers = [];
+        let merchandiseItems = [];
+        let consumerItems = [];
+        let editingSaleId = null;
 
         const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
         const formatNumber = (value) => numberFormatter.format(Number(value || 0));
@@ -501,8 +525,8 @@
             } else if (tabName === 'sales') {
                 loadMerchandiseForSales();
                 loadConsumersForSales();
-                loadStats();
             } else if (tabName === 'history') {
+                loadStats();
                 loadSalesHistory();
             }
         }
@@ -524,29 +548,36 @@
         async function loadMerchandise() {
             try {
                 const response = await fetch('/api/merchandise');
-                const items = await response.json();
-                
-                const container = document.getElementById('merchandiseList');
-                
-                if (items.length === 0) {
-                    container.innerHTML = '<div class="empty-state">등록된 상품이 없습니다. 위 폼에서 상품을 추가해 주세요.</div>';
-                    return;
-                }
-                
-                container.innerHTML = items.map(item => `
-                    <div class="merchandise-item">
-                        <h3>${item.name}</h3>
-                        <p><strong>설명:</strong> ${item.description || '정보 없음'}</p>
-                        <p><strong>재고:</strong> ${formatNumber(item.quantity)}개</p>
-                        <p><strong>단가:</strong> ${formatCurrency(item.price)}</p>
-                        <div class="actions">
-                            <button class="danger" onclick="deleteMerchandise(${item.id})">삭제</button>
-                        </div>
-                    </div>
-                `).join('');
+                merchandiseItems = await response.json();
+                renderMerchandiseList();
             } catch (error) {
                 showErrorMessage('상품을 불러오는 중 오류가 발생했습니다.');
             }
+        }
+
+        function renderMerchandiseList() {
+            const container = document.getElementById('merchandiseList');
+            const query = document.getElementById('merchandiseSearch').value.trim().toLowerCase();
+            const filtered = query ? merchandiseItems.filter(item =>
+                `${item.name} ${item.description || ''}`.toLowerCase().includes(query)
+            ) : merchandiseItems;
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="empty-state">${merchandiseItems.length === 0 ? '등록된 상품이 없습니다. 위 폼에서 상품을 추가해 주세요.' : '검색 결과가 없습니다.'}</div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(item => `
+                <div class="merchandise-item">
+                    <h3>${item.name}</h3>
+                    <p><strong>설명:</strong> ${item.description || '정보 없음'}</p>
+                    <p><strong>재고:</strong> ${formatNumber(item.quantity)}개</p>
+                    <p><strong>단가:</strong> ${formatCurrency(item.price)}</p>
+                    <div class="actions">
+                        <button class="danger" onclick="deleteMerchandise(${item.id})">삭제</button>
+                    </div>
+                </div>
+            `).join('');
         }
 
         // Add merchandise
@@ -613,28 +644,36 @@
         async function loadConsumers() {
             try {
                 const response = await fetch('/api/consumers');
-                const consumers = await response.json();
-                const container = document.getElementById('consumerList');
-
-                if (consumers.length === 0) {
-                    container.innerHTML = '<div class="empty-state">소비자 목록이 비었습니다.</div>';
-                    return;
-                }
-
-                container.innerHTML = consumers.map(consumer => `
-                    <div class="consumer-item">
-                        <h3>${consumer.name}</h3>
-                        <p><strong>전화번호:</strong> ${consumer.phone || '정보 없음'}</p>
-                        <p><strong>주소:</strong> ${consumer.address || '정보 없음'}</p>
-                        <p><strong>기타 정보:</strong> ${consumer.notes || '정보 없음'}</p>
-                        <div class="actions">
-                            <button class="danger" onclick="deleteConsumer(${consumer.id})">삭제</button>
-                        </div>
-                    </div>
-                `).join('');
+                consumerItems = await response.json();
+                renderConsumersList();
             } catch (error) {
                 showErrorMessage('소비자 목록을 불러오는 중 오류가 발생했습니다.');
             }
+        }
+
+        function renderConsumersList() {
+            const container = document.getElementById('consumerList');
+            const query = document.getElementById('consumerSearch').value.trim().toLowerCase();
+            const filtered = query ? consumerItems.filter(consumer =>
+                `${consumer.name} ${consumer.phone || ''} ${consumer.address || ''} ${consumer.notes || ''}`.toLowerCase().includes(query)
+            ) : consumerItems;
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="empty-state">${consumerItems.length === 0 ? '소비자 목록이 비었습니다.' : '검색 결과가 없습니다.'}</div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(consumer => `
+                <div class="consumer-item">
+                    <h3>${consumer.name}</h3>
+                    <p><strong>전화번호:</strong> ${consumer.phone || '정보 없음'}</p>
+                    <p><strong>주소:</strong> ${consumer.address || '정보 없음'}</p>
+                    <p><strong>기타 정보:</strong> ${consumer.notes || '정보 없음'}</p>
+                    <div class="actions">
+                        <button class="danger" onclick="deleteConsumer(${consumer.id})">삭제</button>
+                    </div>
+                </div>
+            `).join('');
         }
 
         document.getElementById('consumerForm').addEventListener('submit', async (e) => {
@@ -728,31 +767,27 @@
             }
         }
 
-        async function editSale(saleId, currentQuantity, currentConsumerId) {
-            const quantityInput = prompt('수정할 판매 수량을 입력하세요.', currentQuantity);
-            if (quantityInput === null) return;
-            const quantity = parseInt(quantityInput, 10);
+        function startSaleEdit(saleId) {
+            editingSaleId = saleId;
+            loadSalesHistory();
+        }
+
+        function cancelSaleEdit() {
+            editingSaleId = null;
+            loadSalesHistory();
+        }
+
+        async function saveSaleEdit(saleId) {
+            const quantity = parseInt(document.getElementById(`editQuantity-${saleId}`).value, 10);
+            const consumerId = parseInt(document.getElementById(`editConsumer-${saleId}`).value, 10);
             if (!Number.isInteger(quantity) || quantity < 1) {
                 showErrorMessage('판매 수량은 1 이상의 숫자여야 합니다.');
                 return;
             }
-
-            if (!saleConsumers.length) {
-                await loadConsumersForSales();
-            }
-
-            const consumerGuide = saleConsumers.map(consumer => `${consumer.id}: ${consumer.name}`).join('\n');
-            const consumerInput = prompt(
-                `소비자 ID를 입력하세요.\n${consumerGuide}`,
-                currentConsumerId || ''
-            );
-            if (consumerInput === null) return;
-            const consumerId = parseInt(consumerInput, 10);
             if (!Number.isInteger(consumerId)) {
-                showErrorMessage('소비자 ID는 숫자로 입력해주세요.');
+                showErrorMessage('소비자를 선택해주세요.');
                 return;
             }
-
             try {
                 const response = await fetch(`/api/sales/${saleId}`, {
                     method: 'PUT',
@@ -766,6 +801,7 @@
                     throw new Error(result.error || '판매 기록 수정에 실패했습니다.');
                 }
                 showMessage(result.message);
+                editingSaleId = null;
                 loadMerchandise();
                 loadMerchandiseForSales();
                 loadConsumersForSales();
@@ -773,6 +809,29 @@
                 loadSalesHistory();
             } catch (error) {
                 showErrorMessage(error.message || '판매 기록 수정 중 오류가 발생했습니다.');
+            }
+        }
+
+        async function deleteSaleHistory(saleId) {
+            if (!confirm('이 판매 기록을 삭제하시겠습니까?')) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/sales/${saleId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '판매 기록 삭제에 실패했습니다.');
+                }
+                editingSaleId = null;
+                showMessage(result.message);
+                loadMerchandise();
+                loadMerchandiseForSales();
+                loadStats();
+                loadSalesHistory();
+            } catch (error) {
+                showErrorMessage(error.message || '판매 기록 삭제 중 오류가 발생했습니다.');
             }
         }
 
@@ -860,6 +919,9 @@
         // Load sales history
         async function loadSalesHistory() {
             try {
+                if (!saleConsumers.length) {
+                    await loadConsumersForSales();
+                }
                 const period = document.getElementById('historyPeriod').value;
                 const response = await fetch(`/api/sales?period=${encodeURIComponent(period)}`);
                 const sales = await response.json();
@@ -889,11 +951,25 @@
                                 <tr>
                                     <td>${new Date(sale.sale_date).toLocaleString('ko-KR')}</td>
                                     <td>${sale.merchandise_name}${sale.merchandise_description ? ` (${sale.merchandise_description})` : ''}</td>
-                                    <td>${sale.consumer_name || '미지정'}</td>
-                                    <td>${formatNumber(sale.quantity_sold)}</td>
+                                    <td>${editingSaleId === sale.id ? `
+                                        <select id="editConsumer-${sale.id}">
+                                            ${saleConsumers.map(consumer => `
+                                                <option value="${consumer.id}" ${consumer.id === sale.consumer_id ? 'selected' : ''}>${consumer.name}${consumer.phone ? ` (${consumer.phone})` : ''}</option>
+                                            `).join('')}
+                                        </select>
+                                    ` : (sale.consumer_name || '미지정')}</td>
+                                    <td>${editingSaleId === sale.id ? `<input type="number" id="editQuantity-${sale.id}" min="1" value="${sale.quantity_sold}">` : formatNumber(sale.quantity_sold)}</td>
                                     <td>${formatCurrency(sale.unit_price)}</td>
                                     <td>${formatCurrency(sale.total_price)}</td>
-                                    <td><button type="button" class="secondary" onclick="editSale(${sale.id}, ${sale.quantity_sold}, ${sale.consumer_id ?? 'null'})">수정</button></td>
+                                    <td>
+                                        ${editingSaleId === sale.id ? `
+                                            <button type="button" onclick="saveSaleEdit(${sale.id})">저장</button>
+                                            <button type="button" class="secondary" onclick="cancelSaleEdit()">취소</button>
+                                        ` : `
+                                            <button type="button" class="secondary" onclick="startSaleEdit(${sale.id})">수정</button>
+                                            <button type="button" class="danger" onclick="deleteSaleHistory(${sale.id})">삭제</button>
+                                        `}
+                                    </td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -905,6 +981,44 @@
         }
 
         document.getElementById('historyPeriod').addEventListener('change', loadSalesHistory);
+        document.getElementById('merchandiseSearch').addEventListener('input', renderMerchandiseList);
+        document.getElementById('consumerSearch').addEventListener('input', renderConsumersList);
+
+        async function backupDatabase() {
+            window.location.href = '/api/config/backup';
+        }
+
+        document.getElementById('restoreForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('restoreFile');
+            if (!fileInput.files.length) {
+                showErrorMessage('복원할 파일을 선택해주세요.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('database', fileInput.files[0]);
+            try {
+                const response = await fetch('/api/config/restore', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '데이터베이스 복원에 실패했습니다.');
+                }
+                showMessage(result.message);
+                fileInput.value = '';
+                loadMerchandise();
+                loadConsumers();
+                loadMerchandiseForSales();
+                loadConsumersForSales();
+                loadStats();
+                loadSalesHistory();
+            } catch (error) {
+                showErrorMessage(error.message || '데이터베이스 복원 중 오류가 발생했습니다.');
+            }
+        });
 
         document.querySelectorAll('input[required], select[required], textarea[required]').forEach((field) => {
             field.addEventListener('invalid', () => {

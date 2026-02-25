@@ -104,6 +104,44 @@ class SalesManagerTestCase(unittest.TestCase):
         self.assertEqual(sale['consumer_id'], consumer_id_2)
         self.assertEqual(sale['total_price'], 500.0)
 
+    def test_delete_sale_restores_inventory(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('삭제테스트상품', '설명', 7, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('소비자',))
+            consumer_id = cursor.lastrowid
+            cursor.execute(
+                'INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+                (merchandise_id, consumer_id, 3, 100.0, 300.0)
+            )
+            sale_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.delete(f'/api/sales/{sale_id}')
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            merchandise = db.execute('SELECT quantity FROM merchandise WHERE id = ?', (merchandise_id,)).fetchone()
+            sale = db.execute('SELECT id FROM sales WHERE id = ?', (sale_id,)).fetchone()
+
+        self.assertEqual(merchandise['quantity'], 10)
+        self.assertIsNone(sale)
+
+    def test_backup_database_download(self):
+        response = self.client.get('/api/config/backup')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment', response.headers.get('Content-Disposition', ''))
+
+    def test_restore_database_requires_file(self):
+        response = self.client.post('/api/config/restore', data={})
+        self.assertEqual(response.status_code, 400)
+
 
 class SalesManagerAutoInitTestCase(unittest.TestCase):
     def setUp(self):

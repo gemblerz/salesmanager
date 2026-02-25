@@ -1,9 +1,11 @@
 """
 Sales Manager - A simple merchandise management system
 """
+import os
 import sqlite3
+from io import BytesIO
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify, g
+from flask import Flask, render_template, request, jsonify, g, send_file
 
 app = Flask(__name__)
 DATABASE = 'salesmanager.db'
@@ -321,6 +323,26 @@ def update_sale(sale_id):
     return jsonify({'message': '판매 기록이 수정되었습니다', 'total_price': total_price})
 
 
+@app.route('/api/sales/<int:sale_id>', methods=['DELETE'])
+def delete_sale(sale_id):
+    """Delete a sale record and restore inventory"""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('SELECT merchandise_id, quantity_sold FROM sales WHERE id = ?', (sale_id,))
+    sale = cursor.fetchone()
+    if not sale:
+        return jsonify({'error': '판매 기록을 찾을 수 없습니다'}), 404
+
+    cursor.execute('''
+        UPDATE merchandise
+        SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    ''', (sale['quantity_sold'], sale['merchandise_id']))
+    cursor.execute('DELETE FROM sales WHERE id = ?', (sale_id,))
+    db.commit()
+    return jsonify({'message': '판매 기록이 삭제되었습니다'})
+
+
 @app.route('/api/consumers', methods=['GET'])
 def get_consumers():
     """Get all consumers"""
@@ -361,6 +383,29 @@ def delete_consumer(consumer_id):
     cursor.execute('DELETE FROM consumers WHERE id = ?', (consumer_id,))
     db.commit()
     return jsonify({'message': '소비자가 삭제되었습니다'})
+
+
+@app.route('/api/config/backup', methods=['GET'])
+def backup_database():
+    """Download the current database file"""
+    if not os.path.exists(DATABASE):
+        init_db()
+    with open(DATABASE, 'rb') as db_file:
+        db_content = db_file.read()
+    return send_file(BytesIO(db_content), as_attachment=True, download_name='salesmanager-backup.db')
+
+
+@app.route('/api/config/restore', methods=['POST'])
+def restore_database():
+    """Restore database from uploaded file"""
+    upload = request.files.get('database')
+    if not upload or upload.filename == '':
+        return jsonify({'error': '복원할 데이터베이스 파일을 선택해주세요'}), 400
+    upload.save(DATABASE)
+    app.config['_DB_INITIALIZED'] = False
+    init_db()
+    app.config['_DB_INITIALIZED'] = True
+    return jsonify({'message': '데이터베이스를 복원했습니다'})
 
 
 if __name__ == '__main__':
