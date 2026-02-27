@@ -411,15 +411,14 @@ def backup_database():
                 'row_data': json.dumps(dict(row), ensure_ascii=False)
             } for row in cursor.fetchall())
         with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
-            duckdb_connection = duckdb.connect()
-            duckdb_connection.execute('CREATE TABLE backup_data(table_name VARCHAR, row_data VARCHAR)')
-            if rows:
-                duckdb_connection.executemany(
-                    'INSERT INTO backup_data VALUES (?, ?)',
-                    [(row['table_name'], row['row_data']) for row in rows]
-                )
-            duckdb_connection.execute(f"COPY backup_data TO '{parquet_file.name}' (FORMAT PARQUET)")
-            duckdb_connection.close()
+            with duckdb.connect() as duckdb_connection:
+                duckdb_connection.execute('CREATE TABLE backup_data(table_name VARCHAR, row_data VARCHAR)')
+                if rows:
+                    duckdb_connection.executemany(
+                        'INSERT INTO backup_data VALUES (?, ?)',
+                        [(row['table_name'], row['row_data']) for row in rows]
+                    )
+                duckdb_connection.execute('COPY backup_data TO ? (FORMAT PARQUET)', [parquet_file.name])
             with open(parquet_file.name, 'rb') as generated_parquet:
                 parquet_buffer = BytesIO(generated_parquet.read())
         parquet_buffer.seek(0)
@@ -451,19 +450,14 @@ def restore_database():
     if filename.endswith('.parquet'):
         with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
             upload.save(parquet_file.name)
-            duckdb_connection = duckdb.connect()
-            try:
-                parquet_rows = duckdb_connection.execute(
-                    'SELECT table_name, row_data FROM read_parquet(?)',
-                    [parquet_file.name]
-                ).fetchall()
-            except duckdb.Error:
-                duckdb_connection.close()
-                return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
-            duckdb_connection.close()
-
-        if parquet_rows is None:
-            return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
+            with duckdb.connect() as duckdb_connection:
+                try:
+                    parquet_rows = duckdb_connection.execute(
+                        'SELECT table_name, row_data FROM read_parquet(?)',
+                        [parquet_file.name]
+                    ).fetchall()
+                except duckdb.Error:
+                    return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
 
         if os.path.exists(DATABASE):
             os.remove(DATABASE)
