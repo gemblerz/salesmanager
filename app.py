@@ -3,9 +3,11 @@ Sales Manager - A simple merchandise management system
 """
 import os
 import sqlite3
+import json
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g, send_file
+import pandas as pd
 
 app = Flask(__name__)
 DATABASE = 'salesmanager.db'
@@ -388,8 +390,28 @@ def delete_consumer(consumer_id):
 @app.route('/api/config/backup', methods=['GET'])
 def backup_database():
     """Download the current database file"""
+    backup_format = request.args.get('format', 'db').lower()
     if not os.path.exists(DATABASE):
         init_db()
+
+    if backup_format == 'parquet':
+        db = get_db()
+        cursor = db.cursor()
+        rows = []
+        for table in ('merchandise', 'consumers', 'sales'):
+            cursor.execute(f'SELECT * FROM {table}')
+            rows.extend({
+                'table_name': table,
+                'row_data': json.dumps(dict(row), ensure_ascii=False)
+            } for row in cursor.fetchall())
+        parquet_buffer = BytesIO()
+        pd.DataFrame(rows, columns=['table_name', 'row_data']).to_parquet(parquet_buffer, index=False)
+        parquet_buffer.seek(0)
+        return send_file(parquet_buffer, as_attachment=True, download_name='salesmanager-backup.parquet')
+
+    if backup_format != 'db':
+        return jsonify({'error': '지원하지 않는 백업 형식입니다'}), 400
+
     with open(DATABASE, 'rb') as db_file:
         db_content = db_file.read()
     return send_file(BytesIO(db_content), as_attachment=True, download_name='salesmanager-backup.db')
@@ -401,7 +423,51 @@ def restore_database():
     upload = request.files.get('database')
     if not upload or upload.filename == '':
         return jsonify({'error': '복원할 데이터베이스 파일을 선택해주세요'}), 400
-    upload.save(DATABASE)
+    filename = upload.filename.lower()
+    if not filename.endswith(('.db', '.sqlite', '.sqlite3', '.parquet')):
+        return jsonify({'error': '지원하지 않는 복원 파일 형식입니다'}), 400
+
+    db_connection = getattr(g, '_database', None)
+    if db_connection is not None:
+        db_connection.close()
+        g._database = None
+
+    if filename.endswith('.parquet'):
+        parquet_data = pd.read_parquet(upload)
+        if not {'table_name', 'row_data'}.issubset(parquet_data.columns):
+            return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
+
+        if os.path.exists(DATABASE):
+            os.remove(DATABASE)
+        app.config['_DB_INITIALIZED'] = False
+        init_db()
+        app.config['_DB_INITIALIZED'] = True
+
+        db = get_db()
+        cursor = db.cursor()
+        valid_tables = ('consumers', 'merchandise', 'sales')
+        table_columns = {}
+        for table in valid_tables:
+            cursor.execute(f'PRAGMA table_info({table})')
+            table_columns[table] = {row['name'] for row in cursor.fetchall()}
+
+        for table in valid_tables:
+            table_rows = parquet_data.loc[parquet_data['table_name'] == table, 'row_data']
+            for row_json in table_rows:
+                parsed_row = json.loads(row_json)
+                restore_row = {k: parsed_row[k] for k in table_columns[table] if k in parsed_row}
+                if not restore_row:
+                    continue
+                columns = ', '.join(restore_row.keys())
+                placeholders = ', '.join('?' for _ in restore_row)
+                cursor.execute(
+                    f'INSERT INTO {table} ({columns}) VALUES ({placeholders})',
+                    tuple(restore_row.values())
+                )
+        db.commit()
+    else:
+        upload.save(DATABASE)
+
     app.config['_DB_INITIALIZED'] = False
     init_db()
     app.config['_DB_INITIALIZED'] = True
