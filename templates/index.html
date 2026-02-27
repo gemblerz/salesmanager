@@ -77,6 +77,13 @@
             font-weight: bold;
         }
 
+        .tab-button.config-toggle {
+            margin-left: auto;
+            font-size: 22px;
+            padding: 10px 16px;
+            min-width: 54px;
+        }
+
         .tab-content {
             display: none;
         }
@@ -299,6 +306,17 @@
             color: #333;
         }
 
+        .sales-select-search {
+            margin-top: 10px;
+        }
+
+        .history-table-hint {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 10px;
+            display: none;
+        }
+
         .analysis-controls .form-group {
             margin-bottom: 0;
             min-width: 220px;
@@ -331,6 +349,12 @@
                 text-align: center;
             }
 
+            .tab-button.config-toggle {
+                flex: 0 0 auto;
+                margin-left: 0;
+                padding: 10px 14px;
+            }
+
             label,
             input[type="text"],
             input[type="number"],
@@ -359,6 +383,49 @@
             .analysis-controls .form-group {
                 min-width: 100%;
             }
+
+            #salesHistory table,
+            #salesHistory thead,
+            #salesHistory tbody,
+            #salesHistory th,
+            #salesHistory td,
+            #salesHistory tr {
+                display: block;
+            }
+
+            #salesHistory thead {
+                display: none;
+            }
+
+            #salesHistory tr {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 10px;
+                margin-bottom: 12px;
+                background: #fff;
+            }
+
+            #salesHistory td {
+                border: none;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                padding: 8px 0;
+                text-align: right;
+                font-size: 15px;
+            }
+
+            #salesHistory td::before {
+                content: attr(data-label);
+                font-weight: bold;
+                color: #333;
+                text-align: left;
+            }
+
+            .history-table-hint {
+                display: block;
+            }
         }
     </style>
 </head>
@@ -373,7 +440,7 @@
             <button class="tab-button" onclick="switchTab('consumers', event)">소비자 관리</button>
             <button class="tab-button" onclick="switchTab('sales', event)">판매 기록</button>
             <button class="tab-button" onclick="switchTab('history', event)">판매 내역</button>
-            <button class="tab-button" onclick="switchTab('config', event)">설정</button>
+            <button class="tab-button config-toggle" onclick="switchTab('config', event)" title="설정 열기" aria-label="설정">⚙️</button>
         </div>
 
         <!-- Merchandise Tab -->
@@ -445,6 +512,7 @@
             <form id="salesForm">
                 <div class="form-group">
                     <label for="saleItem">판매 상품 선택</label>
+                    <input type="text" id="saleItemSearch" class="sales-select-search" placeholder="판매할 상품 검색">
                     <select id="saleItem" name="merchandise_id" required>
                         <option value="">-- 상품을 선택하세요 --</option>
                     </select>
@@ -452,6 +520,7 @@
                 </div>
                 <div class="form-group">
                     <label for="saleConsumer">소비자 선택</label>
+                    <input type="text" id="saleConsumerSearch" class="sales-select-search" placeholder="소비자 검색">
                     <select id="saleConsumer" name="consumer_id" required>
                         <option value="">-- 소비자를 선택하세요 --</option>
                     </select>
@@ -485,11 +554,12 @@
         <!-- Config Tab -->
         <div id="config-tab" class="tab-content">
             <h2>설정</h2>
-            <button type="button" onclick="backupDatabase()">데이터베이스 백업</button>
+            <button type="button" onclick="backupDatabase('db')">DB 백업 (.db)</button>
+            <button type="button" class="secondary" onclick="backupDatabase('parquet')">Parquet 백업 (.parquet)</button>
             <form id="restoreForm" style="margin-top: 20px;">
                 <div class="form-group">
                     <label for="restoreFile">데이터베이스 복원 파일</label>
-                    <input type="file" id="restoreFile" name="database" accept=".db,.sqlite,.sqlite3" required>
+                    <input type="file" id="restoreFile" name="database" accept=".db,.sqlite,.sqlite3,.parquet" required>
                 </div>
                 <button type="submit">데이터베이스 복원</button>
             </form>
@@ -727,17 +797,29 @@
             try {
                 const response = await fetch('/api/merchandise');
                 const items = await response.json();
-                
-                const select = document.getElementById('saleItem');
                 saleMerchandiseItems = items.filter(item => item.quantity > 0);
-                select.innerHTML = '<option value="">-- 상품을 선택하세요 --</option>' +
-                    saleMerchandiseItems.map(item =>
-                        `<option value="${item.id}">${item.name} (${item.description || '설명 없음'}) - 단가 ${formatCurrency(item.price)} (재고 ${formatNumber(item.quantity)}, ID ${item.id})</option>`
-                    ).join('');
+                renderSaleMerchandiseOptions();
                 renderSelectedProductInfo(saleMerchandiseItems);
             } catch (error) {
                 showErrorMessage('상품을 불러오는 중 오류가 발생했습니다.');
             }
+        }
+
+        function renderSaleMerchandiseOptions() {
+            const select = document.getElementById('saleItem');
+            const selectedValue = select.value;
+            const query = document.getElementById('saleItemSearch').value.trim().toLowerCase();
+            const filteredItems = query ? saleMerchandiseItems.filter(item =>
+                `${item.name} ${item.description || ''}`.toLowerCase().includes(query)
+            ) : saleMerchandiseItems;
+            select.innerHTML = '<option value="">-- 상품을 선택하세요 --</option>' +
+                filteredItems.map(item =>
+                    `<option value="${item.id}">${item.name} (${item.description || '설명 없음'}) - 단가 ${formatCurrency(item.price)} (재고 ${formatNumber(item.quantity)}, ID ${item.id})</option>`
+                ).join('');
+            if ([...select.options].some(option => option.value === selectedValue)) {
+                select.value = selectedValue;
+            }
+            renderSelectedProductInfo(saleMerchandiseItems);
         }
 
         function renderSelectedProductInfo(items) {
@@ -757,13 +839,25 @@
             try {
                 const response = await fetch('/api/consumers');
                 saleConsumers = await response.json();
-                const select = document.getElementById('saleConsumer');
-                select.innerHTML = '<option value="">-- 소비자를 선택하세요 --</option>' +
-                    saleConsumers.map(consumer =>
-                        `<option value="${consumer.id}">${consumer.name}${consumer.phone ? ` (${consumer.phone})` : ''}</option>`
-                    ).join('');
+                renderSaleConsumerOptions();
             } catch (error) {
                 showErrorMessage('소비자 목록을 불러오는 중 오류가 발생했습니다.');
+            }
+        }
+
+        function renderSaleConsumerOptions() {
+            const select = document.getElementById('saleConsumer');
+            const selectedValue = select.value;
+            const query = document.getElementById('saleConsumerSearch').value.trim().toLowerCase();
+            const filteredConsumers = query ? saleConsumers.filter(consumer =>
+                `${consumer.name} ${consumer.phone || ''}`.toLowerCase().includes(query)
+            ) : saleConsumers;
+            select.innerHTML = '<option value="">-- 소비자를 선택하세요 --</option>' +
+                filteredConsumers.map(consumer =>
+                    `<option value="${consumer.id}">${consumer.name}${consumer.phone ? ` (${consumer.phone})` : ''}</option>`
+                ).join('');
+            if ([...select.options].some(option => option.value === selectedValue)) {
+                select.value = selectedValue;
             }
         }
 
@@ -934,7 +1028,9 @@
                 }
                 
                 container.innerHTML = `
-                    <table>
+                    <div class="history-table-hint">모바일에서는 판매 내역이 항목별 카드로 표시됩니다.</div>
+                    <div class="table-wrapper">
+                    <table class="grid-table">
                         <thead>
                             <tr>
                                 <th>판매일시</th>
@@ -949,19 +1045,19 @@
                         <tbody>
                             ${sales.map(sale => `
                                 <tr>
-                                    <td>${new Date(sale.sale_date).toLocaleString('ko-KR')}</td>
-                                    <td>${sale.merchandise_name}${sale.merchandise_description ? ` (${sale.merchandise_description})` : ''}</td>
-                                    <td>${editingSaleId === sale.id ? `
+                                    <td data-label="판매일시">${new Date(sale.sale_date).toLocaleString('ko-KR')}</td>
+                                    <td data-label="상품">${sale.merchandise_name}${sale.merchandise_description ? ` (${sale.merchandise_description})` : ''}</td>
+                                    <td data-label="소비자">${editingSaleId === sale.id ? `
                                         <select id="editConsumer-${sale.id}">
                                             ${saleConsumers.map(consumer => `
                                                 <option value="${consumer.id}" ${consumer.id === sale.consumer_id ? 'selected' : ''}>${consumer.name}${consumer.phone ? ` (${consumer.phone})` : ''}</option>
                                             `).join('')}
                                         </select>
                                     ` : (sale.consumer_name || '미지정')}</td>
-                                    <td>${editingSaleId === sale.id ? `<input type="number" id="editQuantity-${sale.id}" min="1" value="${sale.quantity_sold}">` : formatNumber(sale.quantity_sold)}</td>
-                                    <td>${formatCurrency(sale.unit_price)}</td>
-                                    <td>${formatCurrency(sale.total_price)}</td>
-                                    <td>
+                                    <td data-label="수량">${editingSaleId === sale.id ? `<input type="number" id="editQuantity-${sale.id}" min="1" value="${sale.quantity_sold}">` : formatNumber(sale.quantity_sold)}</td>
+                                    <td data-label="단가">${formatCurrency(sale.unit_price)}</td>
+                                    <td data-label="총액">${formatCurrency(sale.total_price)}</td>
+                                    <td data-label="관리">
                                         ${editingSaleId === sale.id ? `
                                             <button type="button" onclick="saveSaleEdit(${sale.id})">저장</button>
                                             <button type="button" class="secondary" onclick="cancelSaleEdit()">취소</button>
@@ -974,6 +1070,7 @@
                             `).join('')}
                         </tbody>
                     </table>
+                    </div>
                 `;
             } catch (error) {
                 showErrorMessage('판매 내역을 불러오는 중 오류가 발생했습니다.');
@@ -983,9 +1080,11 @@
         document.getElementById('historyPeriod').addEventListener('change', loadSalesHistory);
         document.getElementById('merchandiseSearch').addEventListener('input', renderMerchandiseList);
         document.getElementById('consumerSearch').addEventListener('input', renderConsumersList);
+        document.getElementById('saleItemSearch').addEventListener('input', renderSaleMerchandiseOptions);
+        document.getElementById('saleConsumerSearch').addEventListener('input', renderSaleConsumerOptions);
 
-        async function backupDatabase() {
-            window.location.href = '/api/config/backup';
+        async function backupDatabase(format = 'db') {
+            window.location.href = `/api/config/backup?format=${encodeURIComponent(format)}`;
         }
 
         document.getElementById('restoreForm').addEventListener('submit', async (e) => {
