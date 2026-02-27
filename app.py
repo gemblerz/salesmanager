@@ -398,8 +398,13 @@ def backup_database():
         db = get_db()
         cursor = db.cursor()
         rows = []
-        for table in ('merchandise', 'consumers', 'sales'):
-            cursor.execute(f'SELECT * FROM {table}')
+        select_queries = {
+            'merchandise': 'SELECT * FROM merchandise',
+            'consumers': 'SELECT * FROM consumers',
+            'sales': 'SELECT * FROM sales'
+        }
+        for table, query in select_queries.items():
+            cursor.execute(query)
             rows.extend({
                 'table_name': table,
                 'row_data': json.dumps(dict(row), ensure_ascii=False)
@@ -447,22 +452,26 @@ def restore_database():
         cursor = db.cursor()
         valid_tables = ('consumers', 'merchandise', 'sales')
         table_columns = {}
+        table_schema_queries = {
+            'consumers': 'PRAGMA table_info(consumers)',
+            'merchandise': 'PRAGMA table_info(merchandise)',
+            'sales': 'PRAGMA table_info(sales)'
+        }
         for table in valid_tables:
-            cursor.execute(f'PRAGMA table_info({table})')
+            cursor.execute(table_schema_queries[table])
             table_columns[table] = {row['name'] for row in cursor.fetchall()}
 
         for table in valid_tables:
             table_rows = parquet_data.loc[parquet_data['table_name'] == table, 'row_data']
             for row_json in table_rows:
                 parsed_row = json.loads(row_json)
-                restore_row = {k: parsed_row[k] for k in table_columns[table] if k in parsed_row}
-                if not restore_row:
+                restore_columns = [key for key in parsed_row.keys() if key in table_columns[table]]
+                if not restore_columns:
                     continue
-                columns = ', '.join(restore_row.keys())
-                placeholders = ', '.join('?' for _ in restore_row)
+                placeholders = ', '.join('?' for _ in restore_columns)
                 cursor.execute(
-                    f'INSERT INTO {table} ({columns}) VALUES ({placeholders})',
-                    tuple(restore_row.values())
+                    f"INSERT INTO {table} ({', '.join(restore_columns)}) VALUES ({placeholders})",
+                    tuple(parsed_row[column] for column in restore_columns)
                 )
         db.commit()
     else:
