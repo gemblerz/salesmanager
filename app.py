@@ -4,10 +4,11 @@ Sales Manager - A simple merchandise management system
 import os
 import sqlite3
 import json
+import tempfile
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g, send_file
-import pandas as pd
+import duckdb
 
 app = Flask(__name__)
 DATABASE = 'salesmanager.db'
@@ -409,8 +410,18 @@ def backup_database():
                 'table_name': table,
                 'row_data': json.dumps(dict(row), ensure_ascii=False)
             } for row in cursor.fetchall())
-        parquet_buffer = BytesIO()
-        pd.DataFrame(rows, columns=['table_name', 'row_data']).to_parquet(parquet_buffer, index=False)
+        with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
+            duckdb_connection = duckdb.connect()
+            duckdb_connection.execute('CREATE TABLE backup_data(table_name VARCHAR, row_data VARCHAR)')
+            if rows:
+                duckdb_connection.executemany(
+                    'INSERT INTO backup_data VALUES (?, ?)',
+                    [(row['table_name'], row['row_data']) for row in rows]
+                )
+            duckdb_connection.execute(f"COPY backup_data TO '{parquet_file.name}' (FORMAT PARQUET)")
+            duckdb_connection.close()
+            with open(parquet_file.name, 'rb') as generated_parquet:
+                parquet_buffer = BytesIO(generated_parquet.read())
         parquet_buffer.seek(0)
         return send_file(parquet_buffer, as_attachment=True, download_name='salesmanager-backup.parquet')
 
@@ -438,8 +449,20 @@ def restore_database():
         g._database = None
 
     if filename.endswith('.parquet'):
-        parquet_data = pd.read_parquet(upload)
-        if not {'table_name', 'row_data'}.issubset(parquet_data.columns):
+        with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
+            upload.save(parquet_file.name)
+            duckdb_connection = duckdb.connect()
+            try:
+                parquet_rows = duckdb_connection.execute(
+                    'SELECT table_name, row_data FROM read_parquet(?)',
+                    [parquet_file.name]
+                ).fetchall()
+            except duckdb.Error:
+                duckdb_connection.close()
+                return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
+            duckdb_connection.close()
+
+        if parquet_rows is None:
             return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
 
         if os.path.exists(DATABASE):
@@ -462,7 +485,7 @@ def restore_database():
             table_columns[table] = {row['name'] for row in cursor.fetchall()}
 
         for table in valid_tables:
-            table_rows = parquet_data.loc[parquet_data['table_name'] == table, 'row_data']
+            table_rows = [row_data for table_name, row_data in parquet_rows if table_name == table]
             for row_json in table_rows:
                 parsed_row = json.loads(row_json)
                 restore_columns = [key for key in parsed_row.keys() if key in table_columns[table]]

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 import app as salesmanager
-import pandas as pd
+import duckdb
 
 
 class SalesManagerTestCase(unittest.TestCase):
@@ -151,11 +151,16 @@ class SalesManagerTestCase(unittest.TestCase):
 
     def test_restore_database_from_parquet(self):
         with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
-            pd.DataFrame([
-                {'table_name': 'consumers', 'row_data': json.dumps({'id': 1, 'name': '복원소비자'})},
-                {'table_name': 'merchandise', 'row_data': json.dumps({'id': 1, 'name': '복원상품', 'description': '복원설명', 'quantity': 10, 'price': 2000.0})},
-                {'table_name': 'sales', 'row_data': json.dumps({'id': 1, 'merchandise_id': 1, 'consumer_id': 1, 'quantity_sold': 2, 'unit_price': 2000.0, 'total_price': 4000.0})},
-            ]).to_parquet(parquet_file.name, index=False)
+            parquet_rows = [
+                ('consumers', json.dumps({'id': 1, 'name': '복원소비자'})),
+                ('merchandise', json.dumps({'id': 1, 'name': '복원상품', 'description': '복원설명', 'quantity': 10, 'price': 2000.0})),
+                ('sales', json.dumps({'id': 1, 'merchandise_id': 1, 'consumer_id': 1, 'quantity_sold': 2, 'unit_price': 2000.0, 'total_price': 4000.0})),
+            ]
+            duckdb_connection = duckdb.connect()
+            duckdb_connection.execute('CREATE TABLE backup_data(table_name VARCHAR, row_data VARCHAR)')
+            duckdb_connection.executemany('INSERT INTO backup_data VALUES (?, ?)', parquet_rows)
+            duckdb_connection.execute(f"COPY backup_data TO '{parquet_file.name}' (FORMAT PARQUET)")
+            duckdb_connection.close()
 
             with open(parquet_file.name, 'rb') as uploaded:
                 response = self.client.post(

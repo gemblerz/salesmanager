@@ -1,5 +1,4 @@
 Flask==3.0.0
 Werkzeug==3.0.1
 gunicorn==22.0.0
-pandas==2.2.3
-pyarrow==19.0.1
+duckdb==1.4.4
