@@ -1,8 +1,10 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import app as salesmanager
+import run
 
 
 class SalesManagerTestCase(unittest.TestCase):
@@ -184,6 +186,17 @@ class SalesManagerAutoInitTestCase(unittest.TestCase):
         self.assertEqual(consumers[0]['name'], '신규소비자')
         self.assertIsNotNone(merchandise)
         self.assertIsNotNone(sales)
+
+
+class RunScriptTestCase(unittest.TestCase):
+    def test_parse_args_supports_database_path_argument(self):
+        args = run.parse_args(['--database-path', '/data/salesmanager.db'])
+        self.assertEqual(args.database_path, '/data/salesmanager.db')
+
+    def test_parse_args_uses_database_path_environment_default(self):
+        with patch.dict(os.environ, {'DATABASE_PATH': '/mnt/data/sales.db'}):
+            args = run.parse_args([])
+        self.assertEqual(args.database_path, '/mnt/data/sales.db')
 
 
 if __name__ == '__main__':
