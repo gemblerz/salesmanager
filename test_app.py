@@ -1,8 +1,11 @@
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import app as salesmanager
+import run
 
 
 class SalesManagerTestCase(unittest.TestCase):
@@ -184,6 +187,30 @@ class SalesManagerAutoInitTestCase(unittest.TestCase):
         self.assertEqual(consumers[0]['name'], '신규소비자')
         self.assertIsNotNone(merchandise)
         self.assertIsNotNone(sales)
+
+
+class RunScriptTestCase(unittest.TestCase):
+    def test_parse_args_supports_database_path_argument(self):
+        args = run.parse_args(['--database-path', '/data/salesmanager.db'])
+        self.assertEqual(args.database_path, '/data/salesmanager.db')
+
+    def test_parse_args_uses_database_path_environment_default(self):
+        with patch.dict(os.environ, {'DATABASE_PATH': '/mnt/data/sales.db'}):
+            args = run.parse_args([])
+        self.assertEqual(args.database_path, '/mnt/data/sales.db')
+
+    def test_main_sets_database_path_and_starts_gunicorn(self):
+        parsed_args = SimpleNamespace(database_path='/mnt/data/app.db', bind='127.0.0.1:5001')
+        with patch('run.parse_args', return_value=parsed_args):
+            with patch('app.init_db') as init_db:
+                with patch('run.subprocess.call', return_value=0) as gunicorn_call:
+                    with patch.dict(os.environ, {}, clear=False):
+                        exit_code = run.main([])
+                        database_path = os.environ.get('DATABASE_PATH')
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(database_path, '/mnt/data/app.db')
+        init_db.assert_called_once()
+        gunicorn_call.assert_called_once_with(['gunicorn', '--bind', '127.0.0.1:5001', 'app:app'])
 
 
 if __name__ == '__main__':

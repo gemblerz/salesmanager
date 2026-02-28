@@ -97,7 +97,8 @@ By default, the application runs in production mode using Gunicorn.
 
 ## Database
 
-All data is stored in `salesmanager.db` in the project directory. This file is automatically created on first run.
+All data is stored in `salesmanager.db` in the project directory by default. This file is automatically created on first run.
+When starting with `python run.py`, you can change the location with `--database-path /path/to/salesmanager.db`.
 
 **Backup**: To backup your data, simply copy the `salesmanager.db` file to a safe location.
 

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g, send_file
 
 app = Flask(__name__)
-DATABASE = 'salesmanager.db'
+DATABASE = os.environ.get('DATABASE_PATH', 'salesmanager.db')
 
 
 def get_db():
