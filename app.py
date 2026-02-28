@@ -8,10 +8,18 @@ import tempfile
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g, send_file
-import duckdb
 
 app = Flask(__name__)
 DATABASE = 'salesmanager.db'
+
+
+def get_duckdb_module():
+    """Get duckdb module lazily"""
+    try:
+        import duckdb
+        return duckdb
+    except ImportError:
+        return None
 
 
 def get_db():
@@ -396,6 +404,9 @@ def backup_database():
         init_db()
 
     if backup_format == 'parquet':
+        duckdb_module = get_duckdb_module()
+        if duckdb_module is None:
+            return jsonify({'error': 'Parquet 백업은 현재 지원되지 않습니다'}), 400
         db = get_db()
         cursor = db.cursor()
         rows = []
@@ -411,7 +422,7 @@ def backup_database():
                 'row_data': json.dumps(dict(row), ensure_ascii=False)
             } for row in cursor.fetchall())
         with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
-            with duckdb.connect() as duckdb_connection:
+            with duckdb_module.connect() as duckdb_connection:
                 duckdb_connection.execute('CREATE TABLE backup_data(table_name VARCHAR, row_data VARCHAR)')
                 if rows:
                     duckdb_connection.executemany(
@@ -448,15 +459,18 @@ def restore_database():
         g._database = None
 
     if filename.endswith('.parquet'):
+        duckdb_module = get_duckdb_module()
+        if duckdb_module is None:
+            return jsonify({'error': 'Parquet 복원은 현재 지원되지 않습니다'}), 400
         with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
             upload.save(parquet_file.name)
-            with duckdb.connect() as duckdb_connection:
+            with duckdb_module.connect() as duckdb_connection:
                 try:
                     parquet_rows = duckdb_connection.execute(
                         'SELECT table_name, row_data FROM read_parquet(?)',
                         [parquet_file.name]
                     ).fetchall()
-                except duckdb.Error:
+                except duckdb_module.Error:
                     return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
 
         if os.path.exists(DATABASE):

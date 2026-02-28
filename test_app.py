@@ -2,6 +2,7 @@ import os
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import app as salesmanager
 import duckdb
@@ -176,6 +177,24 @@ class SalesManagerTestCase(unittest.TestCase):
 
         self.assertEqual(consumer['name'], '복원소비자')
         self.assertEqual(sale['total_price'], 4000.0)
+
+    def test_backup_database_parquet_without_duckdb(self):
+        with patch('app.get_duckdb_module', return_value=None):
+            response = self.client.get('/api/config/backup?format=parquet')
+        self.assertEqual(response.status_code, 400)
+
+    def test_restore_database_parquet_without_duckdb(self):
+        with patch('app.get_duckdb_module', return_value=None):
+            with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
+                parquet_file.write(b'not-a-parquet')
+                parquet_file.flush()
+                with open(parquet_file.name, 'rb') as uploaded:
+                    response = self.client.post(
+                        '/api/config/restore',
+                        data={'database': (uploaded, 'backup.parquet')},
+                        content_type='multipart/form-data'
+                    )
+        self.assertEqual(response.status_code, 400)
 
 
 class SalesManagerAutoInitTestCase(unittest.TestCase):
