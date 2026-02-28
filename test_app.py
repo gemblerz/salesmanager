@@ -1,11 +1,8 @@
 import os
-import json
 import tempfile
 import unittest
-from unittest.mock import patch
 
 import app as salesmanager
-import duckdb
 
 
 class SalesManagerTestCase(unittest.TestCase):
@@ -141,59 +138,24 @@ class SalesManagerTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('attachment', response.headers.get('Content-Disposition', ''))
 
-    def test_backup_database_download_as_parquet(self):
+    def test_backup_database_download_as_unsupported_format(self):
         response = self.client.get('/api/config/backup?format=parquet')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('salesmanager-backup.parquet', response.headers.get('Content-Disposition', ''))
+        self.assertEqual(response.status_code, 400)
 
     def test_restore_database_requires_file(self):
         response = self.client.post('/api/config/restore', data={})
         self.assertEqual(response.status_code, 400)
 
-    def test_restore_database_from_parquet(self):
+    def test_restore_database_rejects_parquet_file(self):
         with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
-            parquet_rows = [
-                ('consumers', json.dumps({'id': 1, 'name': '복원소비자'})),
-                ('merchandise', json.dumps({'id': 1, 'name': '복원상품', 'description': '복원설명', 'quantity': 10, 'price': 2000.0})),
-                ('sales', json.dumps({'id': 1, 'merchandise_id': 1, 'consumer_id': 1, 'quantity_sold': 2, 'unit_price': 2000.0, 'total_price': 4000.0})),
-            ]
-            with duckdb.connect() as duckdb_connection:
-                duckdb_connection.execute('CREATE TABLE backup_data(table_name VARCHAR, row_data VARCHAR)')
-                duckdb_connection.executemany('INSERT INTO backup_data VALUES (?, ?)', parquet_rows)
-                duckdb_connection.execute('COPY backup_data TO ? (FORMAT PARQUET)', [parquet_file.name])
-
+            parquet_file.write(b'not-a-parquet')
+            parquet_file.flush()
             with open(parquet_file.name, 'rb') as uploaded:
                 response = self.client.post(
                     '/api/config/restore',
                     data={'database': (uploaded, 'backup.parquet')},
                     content_type='multipart/form-data'
                 )
-
-        self.assertEqual(response.status_code, 200)
-        with salesmanager.app.app_context():
-            db = salesmanager.get_db()
-            consumer = db.execute('SELECT name FROM consumers WHERE id = 1').fetchone()
-            sale = db.execute('SELECT total_price FROM sales WHERE id = 1').fetchone()
-
-        self.assertEqual(consumer['name'], '복원소비자')
-        self.assertEqual(sale['total_price'], 4000.0)
-
-    def test_backup_database_parquet_without_duckdb(self):
-        with patch('app.get_duckdb_module', return_value=None):
-            response = self.client.get('/api/config/backup?format=parquet')
-        self.assertEqual(response.status_code, 400)
-
-    def test_restore_database_parquet_without_duckdb(self):
-        with patch('app.get_duckdb_module', return_value=None):
-            with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
-                parquet_file.write(b'not-a-parquet')
-                parquet_file.flush()
-                with open(parquet_file.name, 'rb') as uploaded:
-                    response = self.client.post(
-                        '/api/config/restore',
-                        data={'database': (uploaded, 'backup.parquet')},
-                        content_type='multipart/form-data'
-                    )
         self.assertEqual(response.status_code, 400)
 
 

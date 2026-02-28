@@ -3,23 +3,12 @@ Sales Manager - A simple merchandise management system
 """
 import os
 import sqlite3
-import json
-import tempfile
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g, send_file
 
 app = Flask(__name__)
 DATABASE = 'salesmanager.db'
-
-
-def get_duckdb_module():
-    """Get duckdb module lazily"""
-    try:
-        import duckdb
-        return duckdb
-    except ImportError:
-        return None
 
 
 def get_db():
@@ -403,38 +392,6 @@ def backup_database():
     if not os.path.exists(DATABASE):
         init_db()
 
-    if backup_format == 'parquet':
-        duckdb_module = get_duckdb_module()
-        if duckdb_module is None:
-            return jsonify({'error': 'Parquet 백업은 현재 지원되지 않습니다'}), 400
-        db = get_db()
-        cursor = db.cursor()
-        rows = []
-        select_queries = {
-            'merchandise': 'SELECT * FROM merchandise',
-            'consumers': 'SELECT * FROM consumers',
-            'sales': 'SELECT * FROM sales'
-        }
-        for table, query in select_queries.items():
-            cursor.execute(query)
-            rows.extend({
-                'table_name': table,
-                'row_data': json.dumps(dict(row), ensure_ascii=False)
-            } for row in cursor.fetchall())
-        with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
-            with duckdb_module.connect() as duckdb_connection:
-                duckdb_connection.execute('CREATE TABLE backup_data(table_name VARCHAR, row_data VARCHAR)')
-                if rows:
-                    duckdb_connection.executemany(
-                        'INSERT INTO backup_data VALUES (?, ?)',
-                        [(row['table_name'], row['row_data']) for row in rows]
-                    )
-                duckdb_connection.execute('COPY backup_data TO ? (FORMAT PARQUET)', [parquet_file.name])
-            with open(parquet_file.name, 'rb') as generated_parquet:
-                parquet_buffer = BytesIO(generated_parquet.read())
-        parquet_buffer.seek(0)
-        return send_file(parquet_buffer, as_attachment=True, download_name='salesmanager-backup.parquet')
-
     if backup_format != 'db':
         return jsonify({'error': '지원하지 않는 백업 형식입니다'}), 400
 
@@ -450,7 +407,7 @@ def restore_database():
     if not upload or upload.filename == '':
         return jsonify({'error': '복원할 데이터베이스 파일을 선택해주세요'}), 400
     filename = upload.filename.lower()
-    if not filename.endswith(('.db', '.sqlite', '.sqlite3', '.parquet')):
+    if not filename.endswith(('.db', '.sqlite', '.sqlite3')):
         return jsonify({'error': '지원하지 않는 복원 파일 형식입니다'}), 400
 
     db_connection = getattr(g, '_database', None)
@@ -458,55 +415,7 @@ def restore_database():
         db_connection.close()
         g._database = None
 
-    if filename.endswith('.parquet'):
-        duckdb_module = get_duckdb_module()
-        if duckdb_module is None:
-            return jsonify({'error': 'Parquet 복원은 현재 지원되지 않습니다'}), 400
-        with tempfile.NamedTemporaryFile(suffix='.parquet') as parquet_file:
-            upload.save(parquet_file.name)
-            with duckdb_module.connect() as duckdb_connection:
-                try:
-                    parquet_rows = duckdb_connection.execute(
-                        'SELECT table_name, row_data FROM read_parquet(?)',
-                        [parquet_file.name]
-                    ).fetchall()
-                except duckdb_module.Error:
-                    return jsonify({'error': '유효하지 않은 Parquet 백업 파일입니다'}), 400
-
-        if os.path.exists(DATABASE):
-            os.remove(DATABASE)
-        app.config['_DB_INITIALIZED'] = False
-        init_db()
-        app.config['_DB_INITIALIZED'] = True
-
-        db = get_db()
-        cursor = db.cursor()
-        valid_tables = ('consumers', 'merchandise', 'sales')
-        table_columns = {}
-        table_schema_queries = {
-            'consumers': 'PRAGMA table_info(consumers)',
-            'merchandise': 'PRAGMA table_info(merchandise)',
-            'sales': 'PRAGMA table_info(sales)'
-        }
-        for table in valid_tables:
-            cursor.execute(table_schema_queries[table])
-            table_columns[table] = {row['name'] for row in cursor.fetchall()}
-
-        for table in valid_tables:
-            table_rows = [row_data for table_name, row_data in parquet_rows if table_name == table]
-            for row_json in table_rows:
-                parsed_row = json.loads(row_json)
-                restore_columns = [key for key in parsed_row.keys() if key in table_columns[table]]
-                if not restore_columns:
-                    continue
-                placeholders = ', '.join('?' for _ in restore_columns)
-                cursor.execute(
-                    f"INSERT INTO {table} ({', '.join(restore_columns)}) VALUES ({placeholders})",
-                    tuple(parsed_row[column] for column in restore_columns)
-                )
-        db.commit()
-    else:
-        upload.save(DATABASE)
+    upload.save(DATABASE)
 
     app.config['_DB_INITIALIZED'] = False
     init_db()
