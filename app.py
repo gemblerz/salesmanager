@@ -382,6 +382,8 @@ def update_consumer(consumer_id):
         SET name = ?, phone = ?, address = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     ''', (data['name'], data.get('phone', ''), data.get('address', ''), data.get('notes', ''), consumer_id))
+    if cursor.rowcount == 0:
+        return jsonify({'error': '소비자를 찾을 수 없습니다'}), 404
     db.commit()
     return jsonify({'message': '소비자 정보가 업데이트되었습니다'})
 

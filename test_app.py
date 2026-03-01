@@ -128,6 +128,13 @@ class SalesManagerTestCase(unittest.TestCase):
         self.assertEqual(consumer['address'], '수정주소')
         self.assertEqual(consumer['notes'], '수정메모')
 
+    def test_update_consumer_not_found(self):
+        response = self.client.put(
+            '/api/consumers/9999',
+            json={'name': '없는사용자', 'phone': '', 'address': '', 'notes': ''}
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_update_sale_updates_inventory_and_total(self):
         with salesmanager.app.app_context():
             db = salesmanager.get_db()
