@@ -3,12 +3,24 @@ Sales Manager - A simple merchandise management system
 """
 import os
 import sqlite3
+import calendar
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, g, send_file
 
 app = Flask(__name__)
 DATABASE = os.environ.get('DATABASE_PATH', 'salesmanager.db')
+
+
+def subtract_months(reference_time, months):
+    """Return datetime shifted back by calendar months, preserving time."""
+    year = reference_time.year
+    month = reference_time.month - months
+    while month <= 0:
+        month += 12
+        year -= 1
+    day = min(reference_time.day, calendar.monthrange(year, month)[1])
+    return reference_time.replace(year=year, month=month, day=day)
 
 
 def get_db():
@@ -189,6 +201,9 @@ def record_sale():
     current_quantity = row['quantity']
     price = row['price']
     quantity_sold = data['quantity_sold']
+    unit_price = data.get('unit_price', price)
+    if not isinstance(unit_price, (int, float)) or unit_price <= 0:
+        return jsonify({'error': '단가는 0보다 커야 합니다'}), 400
     consumer_id = data.get('consumer_id')
     if consumer_id is None:
         return jsonify({'error': '소비자를 선택해주세요'}), 400
@@ -201,11 +216,11 @@ def record_sale():
         return jsonify({'error': '재고가 부족합니다'}), 400
     
     # Record sale
-    total_price = price * quantity_sold
+    total_price = unit_price * quantity_sold
     cursor.execute('''
         INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price)
         VALUES (?, ?, ?, ?, ?)
-    ''', (data['merchandise_id'], consumer_id, quantity_sold, price, total_price))
+    ''', (data['merchandise_id'], consumer_id, quantity_sold, unit_price, total_price))
     
     # Update merchandise quantity
     cursor.execute('''
@@ -266,6 +281,18 @@ def get_sales():
         thirty_days_ago = datetime.now() - timedelta(days=30)
         conditions.append('s.sale_date >= ?')
         params.append(thirty_days_ago.strftime('%Y-%m-%d %H:%M:%S'))
+    elif period == 'last_3_months':
+        three_months_ago = subtract_months(datetime.now(), 3)
+        conditions.append('s.sale_date >= ?')
+        params.append(three_months_ago.strftime('%Y-%m-%d %H:%M:%S'))
+    elif period == 'last_6_months':
+        six_months_ago = subtract_months(datetime.now(), 6)
+        conditions.append('s.sale_date >= ?')
+        params.append(six_months_ago.strftime('%Y-%m-%d %H:%M:%S'))
+    elif period == 'this_year':
+        first_day_this_year = datetime.now().replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        conditions.append('s.sale_date >= ?')
+        params.append(first_day_this_year.strftime('%Y-%m-%d %H:%M:%S'))
 
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
@@ -285,6 +312,7 @@ def update_sale(sale_id):
 
     quantity_sold = data.get('quantity_sold')
     consumer_id = data.get('consumer_id')
+    unit_price = data.get('unit_price')
     if not isinstance(quantity_sold, int) or quantity_sold <= 0:
         return jsonify({'error': '판매 수량은 1 이상이어야 합니다'}), 400
     if consumer_id is None:
@@ -312,12 +340,16 @@ def update_sale(sale_id):
         WHERE id = ?
     ''', (quantity_diff, sale['merchandise_id']))
 
-    total_price = sale['unit_price'] * quantity_sold
+    if unit_price is None:
+        unit_price = sale['unit_price']
+    if not isinstance(unit_price, (int, float)) or unit_price <= 0:
+        return jsonify({'error': '단가는 0보다 커야 합니다'}), 400
+    total_price = unit_price * quantity_sold
     cursor.execute('''
         UPDATE sales
-        SET consumer_id = ?, quantity_sold = ?, total_price = ?
+        SET consumer_id = ?, quantity_sold = ?, unit_price = ?, total_price = ?
         WHERE id = ?
-    ''', (consumer_id, quantity_sold, total_price, sale_id))
+    ''', (consumer_id, quantity_sold, unit_price, total_price, sale_id))
 
     db.commit()
     return jsonify({'message': '판매 기록이 수정되었습니다', 'total_price': total_price})
@@ -383,6 +415,23 @@ def delete_consumer(consumer_id):
     cursor.execute('DELETE FROM consumers WHERE id = ?', (consumer_id,))
     db.commit()
     return jsonify({'message': '소비자가 삭제되었습니다'})
+
+
+@app.route('/api/consumers/<int:consumer_id>', methods=['PUT'])
+def update_consumer(consumer_id):
+    """Update consumer"""
+    data = request.json
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        UPDATE consumers
+        SET name = ?, phone = ?, address = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    ''', (data['name'], data.get('phone', ''), data.get('address', ''), data.get('notes', ''), consumer_id))
+    if cursor.rowcount == 0:
+        return jsonify({'error': '소비자를 찾을 수 없습니다'}), 404
+    db.commit()
+    return jsonify({'message': '소비자 정보가 업데이트되었습니다'})
 
 
 @app.route('/api/config/backup', methods=['GET'])

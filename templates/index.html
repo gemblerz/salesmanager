@@ -463,7 +463,7 @@
                     <label for="price">단가 (₩)</label>
                     <input type="number" id="price" name="price" min="0" step="0.01" required>
                 </div>
-                <button type="submit">상품 추가</button>
+                <button type="submit" id="merchandiseSubmitButton">상품 추가</button>
                 <button type="button" class="secondary" onclick="resetForm()">폼 초기화</button>
             </form>
 
@@ -495,7 +495,8 @@
                     <label for="consumerNotes">기타 정보</label>
                     <textarea id="consumerNotes" name="notes"></textarea>
                 </div>
-                <button type="submit">소비자 추가</button>
+                <button type="submit" id="consumerSubmitButton">소비자 추가</button>
+                <button type="button" class="secondary" onclick="resetConsumerForm()">폼 초기화</button>
             </form>
 
             <h2>소비자 목록</h2>
@@ -529,6 +530,10 @@
                     <label for="saleQuantity">판매 수량</label>
                     <input type="number" id="saleQuantity" name="quantity_sold" min="1" required>
                 </div>
+                <div class="form-group">
+                    <label for="saleUnitPrice">판매 단가 (₩, 선택 입력)</label>
+                    <input type="number" id="saleUnitPrice" name="unit_price" min="0.01" step="0.01" placeholder="비워두면 상품 단가 적용" title="비워두면 상품 단가 적용" aria-label="판매 단가, 비워두면 상품 단가 적용">
+                </div>
                 <button type="submit">판매 기록</button>
             </form>
         </div>
@@ -544,7 +549,22 @@
                         <option value="this_month">이번 달</option>
                         <option value="last_month">지난 달</option>
                         <option value="last_30_days">최근 30일</option>
+                        <option value="last_3_months">최근 3개월</option>
+                        <option value="last_6_months">최근 6개월</option>
+                        <option value="this_year">올해</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label for="historyStartDate">시작일</label>
+                    <input type="date" id="historyStartDate">
+                </div>
+                <div class="form-group">
+                    <label for="historyEndDate">종료일</label>
+                    <input type="date" id="historyEndDate">
+                </div>
+                <div class="form-group">
+                    <div aria-hidden="true">&nbsp;</div>
+                    <button type="button" aria-label="수동 조회 실행" onclick="loadSalesHistory()">수동 조회</button>
                 </div>
             </div>
             <div class="stats" id="statsContainer"></div>
@@ -573,6 +593,8 @@
         let merchandiseItems = [];
         let consumerItems = [];
         let editingSaleId = null;
+        let editingMerchandiseId = null;
+        let editingConsumerId = null;
 
         const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
         const formatNumber = (value) => numberFormatter.format(Number(value || 0));
@@ -644,6 +666,7 @@
                     <p><strong>재고:</strong> ${formatNumber(item.quantity)}개</p>
                     <p><strong>단가:</strong> ${formatCurrency(item.price)}</p>
                     <div class="actions">
+                        <button onclick="startMerchandiseEdit(${item.id})">수정</button>
                         <button class="danger" onclick="deleteMerchandise(${item.id})">삭제</button>
                     </div>
                 </div>
@@ -662,8 +685,9 @@
             };
             
             try {
-                const response = await fetch('/api/merchandise', {
-                    method: 'POST',
+                const isEditing = Number.isInteger(editingMerchandiseId);
+                const response = await fetch(isEditing ? `/api/merchandise/${editingMerchandiseId}` : '/api/merchandise', {
+                    method: isEditing ? 'PUT' : 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
@@ -684,6 +708,22 @@
         // Reset form
         function resetForm() {
             document.getElementById('merchandiseForm').reset();
+            editingMerchandiseId = null;
+            document.getElementById('merchandiseSubmitButton').textContent = '상품 추가';
+        }
+
+        function startMerchandiseEdit(id) {
+            const item = merchandiseItems.find((candidate) => candidate.id === id);
+            if (!item) {
+                return;
+            }
+            editingMerchandiseId = id;
+            document.getElementById('name').value = item.name;
+            document.getElementById('description').value = item.description || '';
+            document.getElementById('quantity').value = item.quantity;
+            document.getElementById('price').value = item.price;
+            document.getElementById('merchandiseSubmitButton').textContent = '상품 수정';
+            document.getElementById('name').focus();
         }
 
         // Delete merchandise
@@ -740,6 +780,7 @@
                     <p><strong>주소:</strong> ${consumer.address || '정보 없음'}</p>
                     <p><strong>기타 정보:</strong> ${consumer.notes || '정보 없음'}</p>
                     <div class="actions">
+                        <button onclick="startConsumerEdit(${consumer.id})">수정</button>
                         <button class="danger" onclick="deleteConsumer(${consumer.id})">삭제</button>
                     </div>
                 </div>
@@ -755,8 +796,9 @@
                 notes: document.getElementById('consumerNotes').value
             };
             try {
-                const response = await fetch('/api/consumers', {
-                    method: 'POST',
+                const isEditing = Number.isInteger(editingConsumerId);
+                const response = await fetch(isEditing ? `/api/consumers/${editingConsumerId}` : '/api/consumers', {
+                    method: isEditing ? 'PUT' : 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
@@ -764,13 +806,33 @@
                 });
                 const result = await response.json();
                 showMessage(result.message);
-                document.getElementById('consumerForm').reset();
+                resetConsumerForm();
                 loadConsumers();
                 loadConsumersForSales();
             } catch (error) {
                 showErrorMessage('소비자 등록 중 오류가 발생했습니다.');
             }
         });
+
+        function resetConsumerForm() {
+            document.getElementById('consumerForm').reset();
+            editingConsumerId = null;
+            document.getElementById('consumerSubmitButton').textContent = '소비자 추가';
+        }
+
+        function startConsumerEdit(id) {
+            const consumer = consumerItems.find((candidate) => candidate.id === id);
+            if (!consumer) {
+                return;
+            }
+            editingConsumerId = id;
+            document.getElementById('consumerName').value = consumer.name;
+            document.getElementById('consumerPhone').value = consumer.phone || '';
+            document.getElementById('consumerAddress').value = consumer.address || '';
+            document.getElementById('consumerNotes').value = consumer.notes || '';
+            document.getElementById('consumerSubmitButton').textContent = '소비자 수정';
+            document.getElementById('consumerName').focus();
+        }
 
         async function deleteConsumer(id) {
             if (!confirm('이 소비자를 삭제하시겠습니까?')) {
@@ -874,6 +936,8 @@
         async function saveSaleEdit(saleId) {
             const quantity = parseInt(document.getElementById(`editQuantity-${saleId}`).value, 10);
             const consumerId = parseInt(document.getElementById(`editConsumer-${saleId}`).value, 10);
+            const unitPriceValue = document.getElementById(`editUnitPrice-${saleId}`).value.trim();
+            const unitPrice = parseFloat(unitPriceValue);
             if (!Number.isInteger(quantity) || quantity < 1) {
                 showErrorMessage('판매 수량은 1 이상의 숫자여야 합니다.');
                 return;
@@ -882,13 +946,17 @@
                 showErrorMessage('소비자를 선택해주세요.');
                 return;
             }
+            if (unitPriceValue === '' || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+                showErrorMessage('단가는 0보다 커야 합니다.');
+                return;
+            }
             try {
                 const response = await fetch(`/api/sales/${saleId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ quantity_sold: quantity, consumer_id: consumerId })
+                    body: JSON.stringify({ quantity_sold: quantity, consumer_id: consumerId, unit_price: unitPrice })
                 });
                 const result = await response.json();
                 if (!response.ok) {
@@ -942,6 +1010,15 @@
                 consumer_id: parseInt(document.getElementById('saleConsumer').value),
                 quantity_sold: parseInt(document.getElementById('saleQuantity').value)
             };
+            const unitPriceValue = document.getElementById('saleUnitPrice').value.trim();
+            if (unitPriceValue !== '') {
+                const unitPrice = parseFloat(unitPriceValue);
+                if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+                    showErrorMessage('단가는 0보다 커야 합니다.');
+                    return;
+                }
+                formData.unit_price = unitPrice;
+            }
             
             try {
                 const response = await fetch('/api/sales', {
@@ -1017,7 +1094,16 @@
                     await loadConsumersForSales();
                 }
                 const period = document.getElementById('historyPeriod').value;
-                const response = await fetch(`/api/sales?period=${encodeURIComponent(period)}`);
+                const startDate = document.getElementById('historyStartDate').value;
+                const endDate = document.getElementById('historyEndDate').value;
+                const params = new URLSearchParams({ period });
+                if (startDate) {
+                    params.set('start_date', startDate);
+                }
+                if (endDate) {
+                    params.set('end_date', endDate);
+                }
+                const response = await fetch(`/api/sales?${params.toString()}`);
                 const sales = await response.json();
                 
                 const container = document.getElementById('salesHistory');
@@ -1033,7 +1119,8 @@
                     <table class="grid-table">
                         <thead>
                             <tr>
-                                <th>판매일시</th>
+                                <th>판매일</th>
+                                <th>판매시간</th>
                                 <th>상품</th>
                                 <th>소비자</th>
                                 <th>수량</th>
@@ -1045,7 +1132,8 @@
                         <tbody>
                             ${sales.map(sale => `
                                 <tr>
-                                    <td data-label="판매일시">${new Date(sale.sale_date).toLocaleString('ko-KR')}</td>
+                                    <td data-label="판매일">${new Date(sale.sale_date).toLocaleDateString('ko-KR')}</td>
+                                    <td data-label="판매시간">${new Date(sale.sale_date).toLocaleTimeString('ko-KR')}</td>
                                     <td data-label="상품">${sale.merchandise_name}${sale.merchandise_description ? ` (${sale.merchandise_description})` : ''}</td>
                                     <td data-label="소비자">${editingSaleId === sale.id ? `
                                         <select id="editConsumer-${sale.id}">
@@ -1055,7 +1143,7 @@
                                         </select>
                                     ` : (sale.consumer_name || '미지정')}</td>
                                     <td data-label="수량">${editingSaleId === sale.id ? `<input type="number" id="editQuantity-${sale.id}" min="1" value="${sale.quantity_sold}">` : formatNumber(sale.quantity_sold)}</td>
-                                    <td data-label="단가">${formatCurrency(sale.unit_price)}</td>
+                                    <td data-label="단가">${editingSaleId === sale.id ? `<input type="number" id="editUnitPrice-${sale.id}" min="0.01" step="0.01" value="${sale.unit_price}">` : formatCurrency(sale.unit_price)}</td>
                                     <td data-label="총액">${formatCurrency(sale.total_price)}</td>
                                     <td data-label="관리">
                                         ${editingSaleId === sale.id ? `
