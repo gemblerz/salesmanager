@@ -726,6 +726,47 @@
             document.getElementById('name').focus();
         }
 
+        async function editMerchandise(id) {
+            const item = merchandiseItems.find((value) => value.id === id);
+            if (!item) return;
+
+            const name = prompt('상품명', item.name);
+            if (name === null || !name.trim()) return;
+            const description = prompt('설명', item.description || '');
+            if (description === null) return;
+            const quantityInput = prompt('재고 수량', item.quantity);
+            if (quantityInput === null) return;
+            const priceInput = prompt('단가', item.price);
+            if (priceInput === null) return;
+
+            const quantity = parseInt(quantityInput, 10);
+            const price = parseFloat(priceInput);
+            if (!Number.isInteger(quantity) || quantity < 0 || Number.isNaN(price) || price < 0) {
+                showErrorMessage('유효한 수량과 단가를 입력해주세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/merchandise/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: name.trim(), description, quantity, price })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '상품 수정에 실패했습니다');
+                }
+                showMessage(result.message);
+                loadMerchandise();
+                loadMerchandiseForSales();
+                loadSalesHistory();
+            } catch (error) {
+                showErrorMessage(error.message || '상품을 수정하는 중 오류가 발생했습니다.');
+            }
+        }
+
         // Delete merchandise
         async function deleteMerchandise(id) {
             if (!confirm('이 상품을 삭제하시겠습니까?')) {
