@@ -531,8 +531,8 @@
                     <input type="number" id="saleQuantity" name="quantity_sold" min="1" required>
                 </div>
                 <div class="form-group">
-                    <label for="saleUnitPrice">판매 단가 (₩, 선택 입력)</label>
-                    <input type="number" id="saleUnitPrice" name="unit_price" min="0.01" step="0.01" placeholder="비워두면 상품 단가 적용" title="비워두면 상품 단가 적용" aria-label="판매 단가, 비워두면 상품 단가 적용">
+                    <label for="saleTotalPrice">판매금 (₩, 선택 입력)</label>
+                    <input type="number" id="saleTotalPrice" name="total_price" min="0.01" step="0.01" placeholder="수량 입력 시 자동 계산, 필요 시 수정 가능" title="수량 입력 시 자동 계산, 필요 시 수정 가능" aria-label="판매금, 수량 입력 시 자동 계산">
                 </div>
                 <button type="submit">판매 기록</button>
             </form>
@@ -564,7 +564,15 @@
                 </div>
                 <div class="form-group">
                     <div aria-hidden="true">&nbsp;</div>
-                    <button type="button" aria-label="수동 조회 실행" onclick="loadSalesHistory()">수동 조회</button>
+                    <button type="button" aria-label="조회" onclick="loadSalesHistory()">조회</button>
+                </div>
+                <div class="form-group">
+                    <label for="historyRowsPerPage">표시 개수</label>
+                    <select id="historyRowsPerPage">
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
                 </div>
             </div>
             <div class="stats" id="statsContainer"></div>
@@ -574,6 +582,13 @@
         <!-- Config Tab -->
         <div id="config-tab" class="tab-content">
             <h2>설정</h2>
+            <form id="timezoneForm" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label for="timezoneInput">현재 시간대 (IANA)</label>
+                    <input type="text" id="timezoneInput" placeholder="예: Asia/Seoul" value="Asia/Seoul" required>
+                </div>
+                <button type="submit">시간대 저장</button>
+            </form>
             <button type="button" onclick="backupDatabase('db')">DB 백업 (.db)</button>
             <button type="button" class="secondary" onclick="backupDatabase('parquet')">Parquet 백업 (.parquet)</button>
             <form id="restoreForm" style="margin-top: 20px;">
@@ -587,6 +602,7 @@
     </div>
 
     <script>
+        const DEFAULT_TIMEZONE = 'Asia/Seoul';
         const numberFormatter = new Intl.NumberFormat('ko-KR');
         let saleMerchandiseItems = [];
         let saleConsumers = [];
@@ -595,6 +611,9 @@
         let editingSaleId = null;
         let editingMerchandiseId = null;
         let editingConsumerId = null;
+        let historyPage = 1;
+        let historyRowLimit = 20;
+        let configuredTimeZone = DEFAULT_TIMEZONE;
 
         const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
         const formatNumber = (value) => numberFormatter.format(Number(value || 0));
@@ -936,6 +955,127 @@
             info.innerHTML = `<strong>선택 상품:</strong> ${selected.name} (ID ${selected.id})<br>
                 <strong>설명:</strong> ${selected.description || '설명 없음'}<br>
                 <strong>단가:</strong> ${formatCurrency(selected.price)} / <strong>재고:</strong> ${formatNumber(selected.quantity)}개`;
+            updateSaleTotalPriceSuggestion();
+        }
+
+        function updateHistoryDateRange(period) {
+            const startDateInput = document.getElementById('historyStartDate');
+            const endDateInput = document.getElementById('historyEndDate');
+            const toDateValue = (value) => `${value.year}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`;
+            const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+            const addDays = (dateValue, delta) => {
+                const base = new Date(Date.UTC(dateValue.year, dateValue.month - 1, dateValue.day));
+                base.setUTCDate(base.getUTCDate() + delta);
+                return {
+                    year: base.getUTCFullYear(),
+                    month: base.getUTCMonth() + 1,
+                    day: base.getUTCDate()
+                };
+            };
+            const subtractMonths = (dateValue, months) => {
+                let year = dateValue.year;
+                let month = dateValue.month - months;
+                while (month <= 0) {
+                    month += 12;
+                    year -= 1;
+                }
+                const day = Math.min(dateValue.day, daysInMonth(year, month));
+                return { year, month, day };
+            };
+            const getTodayInTimeZone = () => {
+                try {
+                    const formatter = new Intl.DateTimeFormat('en-CA', {
+                        timeZone: configuredTimeZone,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                    });
+                    const parts = formatter.formatToParts(new Date());
+                    return {
+                        year: Number(parts.find((part) => part.type === 'year').value),
+                        month: Number(parts.find((part) => part.type === 'month').value),
+                        day: Number(parts.find((part) => part.type === 'day').value)
+                    };
+                } catch (error) {
+                    configuredTimeZone = DEFAULT_TIMEZONE;
+                    const fallback = new Date();
+                    return {
+                        year: fallback.getFullYear(),
+                        month: fallback.getMonth() + 1,
+                        day: fallback.getDate()
+                    };
+                }
+            };
+
+            const today = getTodayInTimeZone();
+
+            if (period === 'all') {
+                startDateInput.value = '';
+                endDateInput.value = '';
+                return;
+            }
+
+            let start = null;
+            let end = null;
+
+            if (period === 'this_month') {
+                start = { year: today.year, month: today.month, day: 1 };
+                end = today;
+            } else if (period === 'last_month') {
+                const previousMonth = subtractMonths(today, 1);
+                start = { year: previousMonth.year, month: previousMonth.month, day: 1 };
+                end = { year: previousMonth.year, month: previousMonth.month, day: daysInMonth(previousMonth.year, previousMonth.month) };
+            } else if (period === 'last_30_days') {
+                start = addDays(today, -30);
+                end = today;
+            } else if (period === 'last_3_months') {
+                start = subtractMonths(today, 3);
+                end = today;
+            } else if (period === 'last_6_months') {
+                start = subtractMonths(today, 6);
+                end = today;
+            } else if (period === 'this_year') {
+                start = { year: today.year, month: 1, day: 1 };
+                end = today;
+            }
+
+            startDateInput.value = start ? toDateValue(start) : '';
+            endDateInput.value = end ? toDateValue(end) : '';
+        }
+
+        function hasSelectedHistoryPeriod() {
+            return document.getElementById('historyPeriod').value !== 'all';
+        }
+
+        async function loadTimezoneConfig() {
+            try {
+                const response = await fetch('/api/config/timezone');
+                const result = await response.json();
+                if (response.ok && result.timezone) {
+                    configuredTimeZone = result.timezone;
+                    document.getElementById('timezoneInput').value = configuredTimeZone;
+                    if (document.getElementById('historyPeriod').value !== 'all') {
+                        updateHistoryDateRange(document.getElementById('historyPeriod').value);
+                    }
+                }
+            } catch (error) {
+                configuredTimeZone = DEFAULT_TIMEZONE;
+                document.getElementById('timezoneInput').value = configuredTimeZone;
+            }
+        }
+
+        function updateSaleTotalPriceSuggestion() {
+            const itemId = parseInt(document.getElementById('saleItem').value, 10);
+            const quantity = parseInt(document.getElementById('saleQuantity').value, 10);
+            const totalPriceInput = document.getElementById('saleTotalPrice');
+            const selectedItem = saleMerchandiseItems.find((item) => item.id === itemId);
+            if (!selectedItem || !Number.isInteger(quantity) || quantity < 1) {
+                return;
+            }
+            if (document.activeElement === totalPriceInput) {
+                return;
+            }
+            totalPriceInput.value = (selectedItem.price * quantity).toFixed(2);
         }
 
         async function loadConsumersForSales() {
@@ -977,8 +1117,8 @@
         async function saveSaleEdit(saleId) {
             const quantity = parseInt(document.getElementById(`editQuantity-${saleId}`).value, 10);
             const consumerId = parseInt(document.getElementById(`editConsumer-${saleId}`).value, 10);
-            const unitPriceValue = document.getElementById(`editUnitPrice-${saleId}`).value.trim();
-            const unitPrice = parseFloat(unitPriceValue);
+            const totalPriceValue = document.getElementById(`editTotalPrice-${saleId}`).value.trim();
+            const totalPrice = parseFloat(totalPriceValue);
             if (!Number.isInteger(quantity) || quantity < 1) {
                 showErrorMessage('판매 수량은 1 이상의 숫자여야 합니다.');
                 return;
@@ -987,8 +1127,8 @@
                 showErrorMessage('소비자를 선택해주세요.');
                 return;
             }
-            if (unitPriceValue === '' || !Number.isFinite(unitPrice) || unitPrice <= 0) {
-                showErrorMessage('단가는 0보다 커야 합니다.');
+            if (totalPriceValue === '' || !Number.isFinite(totalPrice) || totalPrice <= 0) {
+                showErrorMessage('판매금은 0보다 커야 합니다.');
                 return;
             }
             try {
@@ -997,7 +1137,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ quantity_sold: quantity, consumer_id: consumerId, unit_price: unitPrice })
+                    body: JSON.stringify({ quantity_sold: quantity, consumer_id: consumerId, total_price: totalPrice })
                 });
                 const result = await response.json();
                 if (!response.ok) {
@@ -1051,14 +1191,14 @@
                 consumer_id: parseInt(document.getElementById('saleConsumer').value),
                 quantity_sold: parseInt(document.getElementById('saleQuantity').value)
             };
-            const unitPriceValue = document.getElementById('saleUnitPrice').value.trim();
-            if (unitPriceValue !== '') {
-                const unitPrice = parseFloat(unitPriceValue);
-                if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-                    showErrorMessage('단가는 0보다 커야 합니다.');
+            const totalPriceValue = document.getElementById('saleTotalPrice').value.trim();
+            if (totalPriceValue !== '') {
+                const totalPrice = parseFloat(totalPriceValue);
+                if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
+                    showErrorMessage('판매금은 0보다 커야 합니다.');
                     return;
                 }
-                formData.unit_price = unitPrice;
+                formData.total_price = totalPrice;
             }
             
             try {
@@ -1129,7 +1269,7 @@
         }
 
         // Load sales history
-        async function loadSalesHistory() {
+        async function loadSalesHistory(page = historyPage) {
             try {
                 if (!saleConsumers.length) {
                     await loadConsumersForSales();
@@ -1137,6 +1277,10 @@
                 const period = document.getElementById('historyPeriod').value;
                 const startDate = document.getElementById('historyStartDate').value;
                 const endDate = document.getElementById('historyEndDate').value;
+                const limit = parseInt(document.getElementById('historyRowsPerPage').value, 10) || historyRowLimit;
+                historyRowLimit = limit;
+                historyPage = page;
+                const offset = (historyPage - 1) * historyRowLimit;
                 const params = new URLSearchParams({ period });
                 if (startDate) {
                     params.set('start_date', startDate);
@@ -1144,8 +1288,17 @@
                 if (endDate) {
                     params.set('end_date', endDate);
                 }
+                params.set('limit', String(historyRowLimit));
+                params.set('offset', String(offset));
                 const response = await fetch(`/api/sales?${params.toString()}`);
-                const sales = await response.json();
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || '판매 내역 조회에 실패했습니다.');
+                }
+                const sales = payload.sales || [];
+                const total = payload.total || 0;
+                const totalPages = Math.max(1, Math.ceil(total / historyRowLimit));
+                historyPage = Math.min(historyPage, totalPages);
                 
                 const container = document.getElementById('salesHistory');
                 
@@ -1165,8 +1318,7 @@
                                 <th>상품</th>
                                 <th>소비자</th>
                                 <th>수량</th>
-                                <th>단가</th>
-                                <th>총액</th>
+                                <th>판매금</th>
                                 <th>관리</th>
                             </tr>
                         </thead>
@@ -1184,8 +1336,7 @@
                                         </select>
                                     ` : (sale.consumer_name || '미지정')}</td>
                                     <td data-label="수량">${editingSaleId === sale.id ? `<input type="number" id="editQuantity-${sale.id}" min="1" value="${sale.quantity_sold}">` : formatNumber(sale.quantity_sold)}</td>
-                                    <td data-label="단가">${editingSaleId === sale.id ? `<input type="number" id="editUnitPrice-${sale.id}" min="0.01" step="0.01" value="${sale.unit_price}">` : formatCurrency(sale.unit_price)}</td>
-                                    <td data-label="총액">${formatCurrency(sale.total_price)}</td>
+                                    <td data-label="판매금">${editingSaleId === sale.id ? `<input type="number" id="editTotalPrice-${sale.id}" min="0.01" step="0.01" value="${sale.total_price}">` : formatCurrency(sale.total_price)}</td>
                                     <td data-label="관리">
                                         ${editingSaleId === sale.id ? `
                                             <button type="button" onclick="saveSaleEdit(${sale.id})">저장</button>
@@ -1200,13 +1351,35 @@
                         </tbody>
                     </table>
                     </div>
+                    <div class="pagination-controls" style="display:flex;align-items:center;gap:10px;margin-top:12px;">
+                        <button type="button" class="secondary" ${historyPage <= 1 ? 'disabled' : ''} onclick="loadSalesHistory(${historyPage - 1})">이전</button>
+                        <span>${historyPage} / ${totalPages} 페이지 (총 ${formatNumber(total)}건)</span>
+                        <button type="button" class="secondary" ${historyPage >= totalPages ? 'disabled' : ''} onclick="loadSalesHistory(${historyPage + 1})">다음</button>
+                    </div>
                 `;
             } catch (error) {
                 showErrorMessage('판매 내역을 불러오는 중 오류가 발생했습니다.');
             }
         }
 
-        document.getElementById('historyPeriod').addEventListener('change', loadSalesHistory);
+        document.getElementById('historyPeriod').addEventListener('change', (event) => {
+            updateHistoryDateRange(event.target.value);
+            historyPage = 1;
+            loadSalesHistory(1);
+        });
+        document.getElementById('historyRowsPerPage').addEventListener('change', () => {
+            historyPage = 1;
+            loadSalesHistory(1);
+        });
+        document.getElementById('historyStartDate').addEventListener('change', () => {
+            historyPage = 1;
+            loadSalesHistory(1);
+        });
+        document.getElementById('historyEndDate').addEventListener('change', () => {
+            historyPage = 1;
+            loadSalesHistory(1);
+        });
+        document.getElementById('saleQuantity').addEventListener('input', updateSaleTotalPriceSuggestion);
         document.getElementById('merchandiseSearch').addEventListener('input', renderMerchandiseList);
         document.getElementById('consumerSearch').addEventListener('input', renderConsumersList);
         document.getElementById('saleItemSearch').addEventListener('input', renderSaleMerchandiseOptions);
@@ -1215,6 +1388,38 @@
         async function backupDatabase(format = 'db') {
             window.location.href = `/api/config/backup?format=${encodeURIComponent(format)}`;
         }
+
+        document.getElementById('timezoneForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const timezoneInput = document.getElementById('timezoneInput');
+            const timezone = timezoneInput.value.trim();
+            if (!timezone) {
+                showErrorMessage('시간대를 입력해주세요.');
+                return;
+            }
+            try {
+                const response = await fetch('/api/config/timezone', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ timezone })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '시간대 저장에 실패했습니다.');
+                }
+                configuredTimeZone = result.timezone;
+                showMessage(result.message);
+                if (hasSelectedHistoryPeriod()) {
+                    updateHistoryDateRange(document.getElementById('historyPeriod').value);
+                    historyPage = 1;
+                    loadSalesHistory(1);
+                }
+            } catch (error) {
+                showErrorMessage(error.message || '시간대 저장 중 오류가 발생했습니다.');
+            }
+        });
 
         document.getElementById('restoreForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1257,6 +1462,7 @@
         });
 
         // Load initial data
+        loadTimezoneConfig();
         loadMerchandise();
     </script>
 </body>

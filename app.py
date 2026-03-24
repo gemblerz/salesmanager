@@ -6,6 +6,7 @@ import sqlite3
 import calendar
 from io import BytesIO
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Flask, render_template, request, jsonify, g, send_file
 
 app = Flask(__name__)
@@ -87,6 +88,15 @@ def init_db():
             )
         ''')
 
+        # Create app configuration table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS app_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # Backward-compatible migrations for older DBs
         cursor.execute('PRAGMA table_info(sales)')
         sales_columns = [row['name'] for row in cursor.fetchall()]
@@ -105,6 +115,12 @@ def init_db():
             cursor.execute('ALTER TABLE consumers ADD COLUMN created_at TIMESTAMP')
         if 'updated_at' not in consumer_columns:
             cursor.execute('ALTER TABLE consumers ADD COLUMN updated_at TIMESTAMP')
+
+        # Ensure timezone configuration default exists
+        cursor.execute('''
+            INSERT OR IGNORE INTO app_config (key, value)
+            VALUES ('timezone', 'Asia/Seoul')
+        ''')
         
         db.commit()
 
@@ -201,9 +217,20 @@ def record_sale():
     current_quantity = row['quantity']
     price = row['price']
     quantity_sold = data['quantity_sold']
-    unit_price = data.get('unit_price', price)
-    if not isinstance(unit_price, (int, float)) or unit_price <= 0:
-        return jsonify({'error': '단가는 0보다 커야 합니다'}), 400
+    if not isinstance(quantity_sold, int) or quantity_sold <= 0:
+        return jsonify({'error': '판매 수량은 1 이상이어야 합니다'}), 400
+
+    total_price_input = data.get('total_price')
+    if total_price_input is not None:
+        if not isinstance(total_price_input, (int, float)) or total_price_input <= 0:
+            return jsonify({'error': '판매금은 0보다 커야 합니다'}), 400
+        total_price = float(total_price_input)
+        unit_price = total_price / quantity_sold
+    else:
+        unit_price = data.get('unit_price', price)
+        if not isinstance(unit_price, (int, float)) or unit_price <= 0:
+            return jsonify({'error': '단가는 0보다 커야 합니다'}), 400
+        total_price = unit_price * quantity_sold
     consumer_id = data.get('consumer_id')
     if consumer_id is None:
         return jsonify({'error': '소비자를 선택해주세요'}), 400
@@ -216,7 +243,6 @@ def record_sale():
         return jsonify({'error': '재고가 부족합니다'}), 400
     
     # Record sale
-    total_price = unit_price * quantity_sold
     cursor.execute('''
         INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price)
         VALUES (?, ?, ?, ?, ?)
@@ -241,6 +267,8 @@ def get_sales():
     period = request.args.get('period', 'all')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    limit = request.args.get('limit')
+    offset = request.args.get('offset', '0')
 
     query = '''
         SELECT s.*, m.name as merchandise_name, m.description as merchandise_description,
@@ -298,6 +326,34 @@ def get_sales():
         query += ' WHERE ' + ' AND '.join(conditions)
 
     query += ' ORDER BY s.sale_date DESC'
+
+    if limit is not None:
+        try:
+            limit_value = int(limit)
+            offset_value = int(offset)
+        except ValueError:
+            return jsonify({'error': 'limit과 offset은 정수여야 합니다'}), 400
+        if limit_value not in (20, 50, 100):
+            return jsonify({'error': 'limit은 20, 50, 100 중 하나여야 합니다'}), 400
+        if offset_value < 0:
+            return jsonify({'error': 'offset은 0 이상이어야 합니다'}), 400
+
+        count_query = 'SELECT COUNT(*) as total FROM sales s'
+        if conditions:
+            count_query += ' WHERE ' + ' AND '.join(conditions)
+        cursor.execute(count_query, params)
+        total_count = cursor.fetchone()['total']
+
+        paginated_query = query + ' LIMIT ? OFFSET ?'
+        cursor.execute(paginated_query, params + [limit_value, offset_value])
+        sales = [dict(row) for row in cursor.fetchall()]
+        return jsonify({
+            'sales': sales,
+            'total': total_count,
+            'limit': limit_value,
+            'offset': offset_value
+        })
+
     cursor.execute(query, params)
     sales = [dict(row) for row in cursor.fetchall()]
     return jsonify(sales)
@@ -313,6 +369,7 @@ def update_sale(sale_id):
     quantity_sold = data.get('quantity_sold')
     consumer_id = data.get('consumer_id')
     unit_price = data.get('unit_price')
+    total_price_input = data.get('total_price')
     if not isinstance(quantity_sold, int) or quantity_sold <= 0:
         return jsonify({'error': '판매 수량은 1 이상이어야 합니다'}), 400
     if consumer_id is None:
@@ -340,11 +397,17 @@ def update_sale(sale_id):
         WHERE id = ?
     ''', (quantity_diff, sale['merchandise_id']))
 
-    if unit_price is None:
-        unit_price = sale['unit_price']
-    if not isinstance(unit_price, (int, float)) or unit_price <= 0:
-        return jsonify({'error': '단가는 0보다 커야 합니다'}), 400
-    total_price = unit_price * quantity_sold
+    if total_price_input is not None:
+        if not isinstance(total_price_input, (int, float)) or total_price_input <= 0:
+            return jsonify({'error': '판매금은 0보다 커야 합니다'}), 400
+        total_price = float(total_price_input)
+        unit_price = total_price / quantity_sold
+    else:
+        if unit_price is None:
+            unit_price = sale['unit_price']
+        if not isinstance(unit_price, (int, float)) or unit_price <= 0:
+            return jsonify({'error': '단가는 0보다 커야 합니다'}), 400
+        total_price = unit_price * quantity_sold
     cursor.execute('''
         UPDATE sales
         SET consumer_id = ?, quantity_sold = ?, unit_price = ?, total_price = ?
@@ -470,6 +533,43 @@ def restore_database():
     init_db()
     app.config['_DB_INITIALIZED'] = True
     return jsonify({'message': '데이터베이스를 복원했습니다'})
+
+
+@app.route('/api/config/timezone', methods=['GET'])
+def get_timezone_config():
+    """Get current timezone configuration"""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('SELECT value FROM app_config WHERE key = ?', ('timezone',))
+    row = cursor.fetchone()
+    timezone = row['value'] if row else 'Asia/Seoul'
+    return jsonify({'timezone': timezone})
+
+
+@app.route('/api/config/timezone', methods=['POST'])
+def update_timezone_config():
+    """Update timezone configuration"""
+    data = request.json or {}
+    timezone = data.get('timezone', '').strip()
+    if not timezone:
+        return jsonify({'error': '시간대를 입력해주세요'}), 400
+
+    try:
+        ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        return jsonify({'error': '유효하지 않은 시간대입니다'}), 400
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        INSERT INTO app_config (key, value, updated_at)
+        VALUES ('timezone', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+    ''', (timezone,))
+    db.commit()
+    return jsonify({'message': '시간대 설정이 저장되었습니다', 'timezone': timezone})
 
 
 if __name__ == '__main__':

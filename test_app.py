@@ -239,6 +239,67 @@ class SalesManagerTestCase(unittest.TestCase):
         self.assertEqual(sale['unit_price'], 110.0)
         self.assertEqual(sale['total_price'], 330.0)
 
+    def test_record_sale_supports_manual_total_price(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('총액입력상품', '설명', 10, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('총액소비자',))
+            consumer_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.post(
+            '/api/sales',
+            json={'merchandise_id': merchandise_id, 'consumer_id': consumer_id, 'quantity_sold': 2, 'total_price': 250.0}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            sale = db.execute(
+                'SELECT unit_price, total_price FROM sales WHERE merchandise_id = ?',
+                (merchandise_id,)
+            ).fetchone()
+        self.assertEqual(sale['unit_price'], 125.0)
+        self.assertEqual(sale['total_price'], 250.0)
+
+    def test_update_sale_supports_manual_total_price(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('총액수정상품', '설명', 8, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('소비자1',))
+            consumer_id = cursor.lastrowid
+            cursor.execute(
+                'INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+                (merchandise_id, consumer_id, 2, 100.0, 200.0)
+            )
+            sale_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.put(
+            f'/api/sales/{sale_id}',
+            json={'quantity_sold': 5, 'consumer_id': consumer_id, 'total_price': 400.0}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            sale = db.execute(
+                'SELECT unit_price, total_price FROM sales WHERE id = ?',
+                (sale_id,)
+            ).fetchone()
+        self.assertEqual(sale['unit_price'], 80.0)
+        self.assertEqual(sale['total_price'], 400.0)
+
     def test_get_sales_supports_extended_period_filters(self):
         with salesmanager.app.app_context():
             db = salesmanager.get_db()
@@ -259,6 +320,36 @@ class SalesManagerTestCase(unittest.TestCase):
         for period in ('last_3_months', 'last_6_months', 'this_year'):
             response = self.client.get(f'/api/sales?period={period}')
             self.assertEqual(response.status_code, 200)
+
+    def test_get_sales_supports_pagination(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('페이징상품', '설명', 100, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('페이징소비자',))
+            consumer_id = cursor.lastrowid
+            for _ in range(25):
+                cursor.execute(
+                    'INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+                    (merchandise_id, consumer_id, 1, 100.0, 100.0)
+                )
+            db.commit()
+
+        response = self.client.get('/api/sales?period=all&limit=20&offset=0')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['total'], 25)
+        self.assertEqual(payload['limit'], 20)
+        self.assertEqual(payload['offset'], 0)
+        self.assertEqual(len(payload['sales']), 20)
+
+    def test_get_sales_rejects_invalid_limit(self):
+        response = self.client.get('/api/sales?period=all&limit=10&offset=0')
+        self.assertEqual(response.status_code, 400)
 
     def test_update_consumer(self):
         with salesmanager.app.app_context():
@@ -344,6 +435,26 @@ class SalesManagerTestCase(unittest.TestCase):
                     data={'database': (uploaded, 'backup.parquet')},
                     content_type='multipart/form-data'
                 )
+        self.assertEqual(response.status_code, 400)
+
+    def test_timezone_config_defaults_to_asia_seoul(self):
+        response = self.client.get('/api/config/timezone')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['timezone'], 'Asia/Seoul')
+
+    def test_timezone_config_can_be_updated(self):
+        response = self.client.post('/api/config/timezone', json={'timezone': 'UTC'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['timezone'], 'UTC')
+
+        read_back = self.client.get('/api/config/timezone')
+        self.assertEqual(read_back.status_code, 200)
+        self.assertEqual(read_back.get_json()['timezone'], 'UTC')
+
+    def test_timezone_config_rejects_invalid_timezone(self):
+        response = self.client.post('/api/config/timezone', json={'timezone': 'Not/A_Timezone'})
         self.assertEqual(response.status_code, 400)
 
 
