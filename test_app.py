@@ -410,5 +410,14 @@ class RunScriptTestCase(unittest.TestCase):
         gunicorn_call.assert_called_once_with(['gunicorn', '--bind', '127.0.0.1:5001', 'app:app'])
 
 
+class RoutingIntegrityTestCase(unittest.TestCase):
+    def test_consumer_update_route_registered_once(self):
+        rules = [
+            rule for rule in salesmanager.app.url_map.iter_rules()
+            if rule.rule == '/api/consumers/<int:consumer_id>' and 'PUT' in rule.methods
+        ]
+        self.assertEqual(len(rules), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

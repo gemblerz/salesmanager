@@ -434,23 +434,6 @@ def delete_consumer(consumer_id):
     return jsonify({'message': '소비자가 삭제되었습니다'})
 
 
-@app.route('/api/consumers/<int:consumer_id>', methods=['PUT'])
-def update_consumer(consumer_id):
-    """Update consumer"""
-    data = request.json
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute('''
-        UPDATE consumers
-        SET name = ?, phone = ?, address = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    ''', (data['name'], data.get('phone', ''), data.get('address', ''), data.get('notes', ''), consumer_id))
-    if cursor.rowcount == 0:
-        return jsonify({'error': '소비자를 찾을 수 없습니다'}), 404
-    db.commit()
-    return jsonify({'message': '소비자 정보가 업데이트되었습니다'})
-
-
 @app.route('/api/config/backup', methods=['GET'])
 def backup_database():
     """Download the current database file"""
