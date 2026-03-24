@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -177,6 +178,120 @@ class SalesManagerTestCase(unittest.TestCase):
         self.assertEqual(sale['consumer_id'], consumer_id_2)
         self.assertEqual(sale['total_price'], 500.0)
 
+    def test_record_sale_supports_manual_unit_price(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('수동단가상품', '설명', 10, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('소비자',))
+            consumer_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.post(
+            '/api/sales',
+            json={'merchandise_id': merchandise_id, 'consumer_id': consumer_id, 'quantity_sold': 2, 'unit_price': 120.0}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            sale = db.execute(
+                'SELECT unit_price, total_price FROM sales WHERE merchandise_id = ?',
+                (merchandise_id,)
+            ).fetchone()
+        self.assertEqual(sale['unit_price'], 120.0)
+        self.assertEqual(sale['total_price'], 240.0)
+
+    def test_update_sale_supports_manual_unit_price(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('수정단가상품', '설명', 8, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('소비자1',))
+            consumer_id = cursor.lastrowid
+            cursor.execute(
+                'INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+                (merchandise_id, consumer_id, 2, 100.0, 200.0)
+            )
+            sale_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.put(
+            f'/api/sales/{sale_id}',
+            json={'quantity_sold': 3, 'consumer_id': consumer_id, 'unit_price': 110.0}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            sale = db.execute(
+                'SELECT unit_price, total_price FROM sales WHERE id = ?',
+                (sale_id,)
+            ).fetchone()
+        self.assertEqual(sale['unit_price'], 110.0)
+        self.assertEqual(sale['total_price'], 330.0)
+
+    def test_get_sales_supports_extended_period_filters(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('기간상품', '설명', 10, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('기간소비자',))
+            consumer_id = cursor.lastrowid
+            cursor.execute(
+                'INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+                (merchandise_id, consumer_id, 1, 100.0, 100.0)
+            )
+            db.commit()
+
+        for period in ('last_3_months', 'last_6_months', 'this_year'):
+            response = self.client.get(f'/api/sales?period={period}')
+            self.assertEqual(response.status_code, 200)
+
+    def test_update_consumer(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO consumers (name, phone, address, notes) VALUES (?, ?, ?, ?)',
+                ('기존소비자', '010-1111-2222', '서울', '메모')
+            )
+            consumer_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.put(
+            f'/api/consumers/{consumer_id}',
+            json={'name': '수정소비자', 'phone': '010-9999-0000', 'address': '부산', 'notes': '수정메모'}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            consumer = db.execute('SELECT name, phone, address, notes FROM consumers WHERE id = ?', (consumer_id,)).fetchone()
+        self.assertEqual(consumer['name'], '수정소비자')
+        self.assertEqual(consumer['phone'], '010-9999-0000')
+        self.assertEqual(consumer['address'], '부산')
+        self.assertEqual(consumer['notes'], '수정메모')
+
+    def test_update_consumer_returns_404_for_unknown_id(self):
+        response = self.client.put(
+            '/api/consumers/9999',
+            json={'name': '없는소비자', 'phone': '', 'address': '', 'notes': ''}
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_delete_sale_restores_inventory(self):
         with salesmanager.app.app_context():
             db = salesmanager.get_db()
@@ -257,6 +372,18 @@ class SalesManagerAutoInitTestCase(unittest.TestCase):
         self.assertEqual(consumers[0]['name'], '신규소비자')
         self.assertIsNotNone(merchandise)
         self.assertIsNotNone(sales)
+
+
+class DateHelperTestCase(unittest.TestCase):
+    def test_subtract_months_handles_year_boundary(self):
+        reference = datetime(2026, 1, 15, 10, 30, 0)
+        result = salesmanager.subtract_months(reference, 1)
+        self.assertEqual(result, datetime(2025, 12, 15, 10, 30, 0))
+
+    def test_subtract_months_clamps_day_to_last_day_of_month(self):
+        reference = datetime(2026, 3, 31, 9, 0, 0)
+        result = salesmanager.subtract_months(reference, 1)
+        self.assertEqual(result, datetime(2026, 2, 28, 9, 0, 0))
 
 
 class RunScriptTestCase(unittest.TestCase):
