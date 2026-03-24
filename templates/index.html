@@ -564,7 +564,7 @@
                 </div>
                 <div class="form-group">
                     <div aria-hidden="true">&nbsp;</div>
-                    <button type="button" aria-label="조회 실행" onclick="loadSalesHistory()">조회</button>
+                    <button type="button" aria-label="조회" onclick="loadSalesHistory()">조회</button>
                 </div>
                 <div class="form-group">
                     <label for="historyRowsPerPage">표시 개수</label>
@@ -1305,9 +1305,11 @@
         });
         document.getElementById('historyStartDate').addEventListener('change', () => {
             historyPage = 1;
+            loadSalesHistory(1);
         });
         document.getElementById('historyEndDate').addEventListener('change', () => {
             historyPage = 1;
+            loadSalesHistory(1);
         });
         document.getElementById('saleQuantity').addEventListener('input', updateSaleTotalPriceSuggestion);
         document.getElementById('merchandiseSearch').addEventListener('input', renderMerchandiseList);
