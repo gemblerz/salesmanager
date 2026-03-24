@@ -602,6 +602,7 @@
     </div>
 
     <script>
+        const DEFAULT_TIMEZONE = 'Asia/Seoul';
         const numberFormatter = new Intl.NumberFormat('ko-KR');
         let saleMerchandiseItems = [];
         let saleConsumers = [];
@@ -612,7 +613,7 @@
         let editingConsumerId = null;
         let historyPage = 1;
         let historyRowLimit = 20;
-        let configuredTimeZone = 'Asia/Seoul';
+        let configuredTimeZone = DEFAULT_TIMEZONE;
 
         const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
         const formatNumber = (value) => numberFormatter.format(Number(value || 0));
@@ -996,7 +997,7 @@
                         day: Number(parts.find((part) => part.type === 'day').value)
                     };
                 } catch (error) {
-                    configuredTimeZone = 'Asia/Seoul';
+                    configuredTimeZone = DEFAULT_TIMEZONE;
                     const fallback = new Date();
                     return {
                         year: fallback.getFullYear(),
@@ -1042,6 +1043,10 @@
             endDateInput.value = end ? toDateValue(end) : '';
         }
 
+        function hasSelectedHistoryPeriod() {
+            return document.getElementById('historyPeriod').value !== 'all';
+        }
+
         async function loadTimezoneConfig() {
             try {
                 const response = await fetch('/api/config/timezone');
@@ -1054,7 +1059,7 @@
                     }
                 }
             } catch (error) {
-                configuredTimeZone = 'Asia/Seoul';
+                configuredTimeZone = DEFAULT_TIMEZONE;
                 document.getElementById('timezoneInput').value = configuredTimeZone;
             }
         }
@@ -1406,7 +1411,7 @@
                 }
                 configuredTimeZone = result.timezone;
                 showMessage(result.message);
-                if (document.getElementById('historyPeriod').value !== 'all') {
+                if (hasSelectedHistoryPeriod()) {
                     updateHistoryDateRange(document.getElementById('historyPeriod').value);
                     historyPage = 1;
                     loadSalesHistory(1);
