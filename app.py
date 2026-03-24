@@ -6,6 +6,7 @@ import sqlite3
 import calendar
 from io import BytesIO
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Flask, render_template, request, jsonify, g, send_file
 
 app = Flask(__name__)
@@ -87,6 +88,15 @@ def init_db():
             )
         ''')
 
+        # Create app configuration table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS app_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # Backward-compatible migrations for older DBs
         cursor.execute('PRAGMA table_info(sales)')
         sales_columns = [row['name'] for row in cursor.fetchall()]
@@ -105,6 +115,12 @@ def init_db():
             cursor.execute('ALTER TABLE consumers ADD COLUMN created_at TIMESTAMP')
         if 'updated_at' not in consumer_columns:
             cursor.execute('ALTER TABLE consumers ADD COLUMN updated_at TIMESTAMP')
+
+        # Ensure timezone configuration default exists
+        cursor.execute('''
+            INSERT OR IGNORE INTO app_config (key, value)
+            VALUES ('timezone', 'Asia/Seoul')
+        ''')
         
         db.commit()
 
@@ -517,6 +533,43 @@ def restore_database():
     init_db()
     app.config['_DB_INITIALIZED'] = True
     return jsonify({'message': '데이터베이스를 복원했습니다'})
+
+
+@app.route('/api/config/timezone', methods=['GET'])
+def get_timezone_config():
+    """Get current timezone configuration"""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('SELECT value FROM app_config WHERE key = ?', ('timezone',))
+    row = cursor.fetchone()
+    timezone = row['value'] if row else 'Asia/Seoul'
+    return jsonify({'timezone': timezone})
+
+
+@app.route('/api/config/timezone', methods=['POST'])
+def update_timezone_config():
+    """Update timezone configuration"""
+    data = request.json or {}
+    timezone = data.get('timezone', '').strip()
+    if not timezone:
+        return jsonify({'error': '시간대를 입력해주세요'}), 400
+
+    try:
+        ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        return jsonify({'error': '유효하지 않은 시간대입니다'}), 400
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        INSERT INTO app_config (key, value, updated_at)
+        VALUES ('timezone', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+    ''', (timezone,))
+    db.commit()
+    return jsonify({'message': '시간대 설정이 저장되었습니다', 'timezone': timezone})
 
 
 if __name__ == '__main__':

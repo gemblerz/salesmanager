@@ -582,6 +582,13 @@
         <!-- Config Tab -->
         <div id="config-tab" class="tab-content">
             <h2>설정</h2>
+            <form id="timezoneForm" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label for="timezoneInput">현재 시간대 (IANA)</label>
+                    <input type="text" id="timezoneInput" placeholder="예: Asia/Seoul" value="Asia/Seoul" required>
+                </div>
+                <button type="submit">시간대 저장</button>
+            </form>
             <button type="button" onclick="backupDatabase('db')">DB 백업 (.db)</button>
             <button type="button" class="secondary" onclick="backupDatabase('parquet')">Parquet 백업 (.parquet)</button>
             <form id="restoreForm" style="margin-top: 20px;">
@@ -605,6 +612,7 @@
         let editingConsumerId = null;
         let historyPage = 1;
         let historyRowLimit = 20;
+        let configuredTimeZone = 'Asia/Seoul';
 
         const formatCurrency = (value) => `₩${numberFormatter.format(Number(value || 0))}`;
         const formatNumber = (value) => numberFormatter.format(Number(value || 0));
@@ -952,13 +960,53 @@
         function updateHistoryDateRange(period) {
             const startDateInput = document.getElementById('historyStartDate');
             const endDateInput = document.getElementById('historyEndDate');
-            const now = new Date();
-            const toDateValue = (value) => {
-                const year = value.getFullYear();
-                const month = String(value.getMonth() + 1).padStart(2, '0');
-                const day = String(value.getDate()).padStart(2, '0');
-                return `${year}-${month}-${day}`;
+            const toDateValue = (value) => `${value.year}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`;
+            const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+            const addDays = (dateValue, delta) => {
+                const base = new Date(Date.UTC(dateValue.year, dateValue.month - 1, dateValue.day));
+                base.setUTCDate(base.getUTCDate() + delta);
+                return {
+                    year: base.getUTCFullYear(),
+                    month: base.getUTCMonth() + 1,
+                    day: base.getUTCDate()
+                };
             };
+            const subtractMonths = (dateValue, months) => {
+                let year = dateValue.year;
+                let month = dateValue.month - months;
+                while (month <= 0) {
+                    month += 12;
+                    year -= 1;
+                }
+                const day = Math.min(dateValue.day, daysInMonth(year, month));
+                return { year, month, day };
+            };
+            const getTodayInTimeZone = () => {
+                try {
+                    const formatter = new Intl.DateTimeFormat('en-CA', {
+                        timeZone: configuredTimeZone,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                    });
+                    const parts = formatter.formatToParts(new Date());
+                    return {
+                        year: Number(parts.find((part) => part.type === 'year').value),
+                        month: Number(parts.find((part) => part.type === 'month').value),
+                        day: Number(parts.find((part) => part.type === 'day').value)
+                    };
+                } catch (error) {
+                    configuredTimeZone = 'Asia/Seoul';
+                    const fallback = new Date();
+                    return {
+                        year: fallback.getFullYear(),
+                        month: fallback.getMonth() + 1,
+                        day: fallback.getDate()
+                    };
+                }
+            };
+
+            const today = getTodayInTimeZone();
 
             if (period === 'all') {
                 startDateInput.value = '';
@@ -970,30 +1018,45 @@
             let end = null;
 
             if (period === 'this_month') {
-                start = new Date(now.getFullYear(), now.getMonth(), 1);
-                end = now;
+                start = { year: today.year, month: today.month, day: 1 };
+                end = today;
             } else if (period === 'last_month') {
-                start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                end = new Date(now.getFullYear(), now.getMonth(), 0);
+                const previousMonth = subtractMonths(today, 1);
+                start = { year: previousMonth.year, month: previousMonth.month, day: 1 };
+                end = { year: previousMonth.year, month: previousMonth.month, day: daysInMonth(previousMonth.year, previousMonth.month) };
             } else if (period === 'last_30_days') {
-                start = new Date(now);
-                start.setDate(start.getDate() - 30);
-                end = now;
+                start = addDays(today, -30);
+                end = today;
             } else if (period === 'last_3_months') {
-                start = new Date(now);
-                start.setMonth(start.getMonth() - 3);
-                end = now;
+                start = subtractMonths(today, 3);
+                end = today;
             } else if (period === 'last_6_months') {
-                start = new Date(now);
-                start.setMonth(start.getMonth() - 6);
-                end = now;
+                start = subtractMonths(today, 6);
+                end = today;
             } else if (period === 'this_year') {
-                start = new Date(now.getFullYear(), 0, 1);
-                end = now;
+                start = { year: today.year, month: 1, day: 1 };
+                end = today;
             }
 
             startDateInput.value = start ? toDateValue(start) : '';
             endDateInput.value = end ? toDateValue(end) : '';
+        }
+
+        async function loadTimezoneConfig() {
+            try {
+                const response = await fetch('/api/config/timezone');
+                const result = await response.json();
+                if (response.ok && result.timezone) {
+                    configuredTimeZone = result.timezone;
+                    document.getElementById('timezoneInput').value = configuredTimeZone;
+                    if (document.getElementById('historyPeriod').value !== 'all') {
+                        updateHistoryDateRange(document.getElementById('historyPeriod').value);
+                    }
+                }
+            } catch (error) {
+                configuredTimeZone = 'Asia/Seoul';
+                document.getElementById('timezoneInput').value = configuredTimeZone;
+            }
         }
 
         function updateSaleTotalPriceSuggestion() {
@@ -1321,6 +1384,38 @@
             window.location.href = `/api/config/backup?format=${encodeURIComponent(format)}`;
         }
 
+        document.getElementById('timezoneForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const timezoneInput = document.getElementById('timezoneInput');
+            const timezone = timezoneInput.value.trim();
+            if (!timezone) {
+                showErrorMessage('시간대를 입력해주세요.');
+                return;
+            }
+            try {
+                const response = await fetch('/api/config/timezone', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ timezone })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '시간대 저장에 실패했습니다.');
+                }
+                configuredTimeZone = result.timezone;
+                showMessage(result.message);
+                if (document.getElementById('historyPeriod').value !== 'all') {
+                    updateHistoryDateRange(document.getElementById('historyPeriod').value);
+                    historyPage = 1;
+                    loadSalesHistory(1);
+                }
+            } catch (error) {
+                showErrorMessage(error.message || '시간대 저장 중 오류가 발생했습니다.');
+            }
+        });
+
         document.getElementById('restoreForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const fileInput = document.getElementById('restoreFile');
@@ -1362,6 +1457,7 @@
         });
 
         // Load initial data
+        loadTimezoneConfig();
         loadMerchandise();
     </script>
 </body>

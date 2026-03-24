@@ -437,6 +437,26 @@ class SalesManagerTestCase(unittest.TestCase):
                 )
         self.assertEqual(response.status_code, 400)
 
+    def test_timezone_config_defaults_to_asia_seoul(self):
+        response = self.client.get('/api/config/timezone')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['timezone'], 'Asia/Seoul')
+
+    def test_timezone_config_can_be_updated(self):
+        response = self.client.post('/api/config/timezone', json={'timezone': 'UTC'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['timezone'], 'UTC')
+
+        read_back = self.client.get('/api/config/timezone')
+        self.assertEqual(read_back.status_code, 200)
+        self.assertEqual(read_back.get_json()['timezone'], 'UTC')
+
+    def test_timezone_config_rejects_invalid_timezone(self):
+        response = self.client.post('/api/config/timezone', json={'timezone': 'Not/A_Timezone'})
+        self.assertEqual(response.status_code, 400)
+
 
 class SalesManagerAutoInitTestCase(unittest.TestCase):
     def setUp(self):
