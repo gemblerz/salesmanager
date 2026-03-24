@@ -65,6 +65,76 @@ class SalesManagerTestCase(unittest.TestCase):
         self.assertEqual(consumers[0]['name'], '홍길동')
         self.assertIn('notes', consumers[0])
 
+    def test_update_merchandise(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('원래상품', '원래설명', 3, 100.0)
+            )
+            merchandise_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.put(
+            f'/api/merchandise/{merchandise_id}',
+            json={'name': '수정상품', 'description': '수정설명', 'quantity': 7, 'price': 150.0}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            merchandise = db.execute(
+                'SELECT name, description, quantity, price FROM merchandise WHERE id = ?',
+                (merchandise_id,)
+            ).fetchone()
+
+        self.assertEqual(merchandise['name'], '수정상품')
+        self.assertEqual(merchandise['description'], '수정설명')
+        self.assertEqual(merchandise['quantity'], 7)
+        self.assertEqual(merchandise['price'], 150.0)
+
+    def test_update_consumer(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO consumers (name, phone, address, notes) VALUES (?, ?, ?, ?)',
+                ('원래이름', '010-1111-1111', '원래주소', '원래메모')
+            )
+            consumer_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.put(
+            f'/api/consumers/{consumer_id}',
+            json={
+                'name': '수정이름',
+                'phone': '010-2222-2222',
+                'address': '수정주소',
+                'notes': '수정메모'
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            consumer = db.execute(
+                'SELECT name, phone, address, notes FROM consumers WHERE id = ?',
+                (consumer_id,)
+            ).fetchone()
+
+        self.assertEqual(consumer['name'], '수정이름')
+        self.assertEqual(consumer['phone'], '010-2222-2222')
+        self.assertEqual(consumer['address'], '수정주소')
+        self.assertEqual(consumer['notes'], '수정메모')
+
+    def test_update_consumer_not_found(self):
+        response = self.client.put(
+            '/api/consumers/9999',
+            json={'name': '없는사용자', 'phone': '', 'address': '', 'notes': ''}
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_update_sale_updates_inventory_and_total(self):
         with salesmanager.app.app_context():
             db = salesmanager.get_db()

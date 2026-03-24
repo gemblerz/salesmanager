@@ -644,6 +644,7 @@
                     <p><strong>재고:</strong> ${formatNumber(item.quantity)}개</p>
                     <p><strong>단가:</strong> ${formatCurrency(item.price)}</p>
                     <div class="actions">
+                        <button class="secondary" onclick="editMerchandise(${item.id})">수정</button>
                         <button class="danger" onclick="deleteMerchandise(${item.id})">삭제</button>
                     </div>
                 </div>
@@ -684,6 +685,47 @@
         // Reset form
         function resetForm() {
             document.getElementById('merchandiseForm').reset();
+        }
+
+        async function editMerchandise(id) {
+            const item = merchandiseItems.find((value) => value.id === id);
+            if (!item) return;
+
+            const name = prompt('상품명', item.name);
+            if (name === null || !name.trim()) return;
+            const description = prompt('설명', item.description || '');
+            if (description === null) return;
+            const quantityInput = prompt('재고 수량', item.quantity);
+            if (quantityInput === null) return;
+            const priceInput = prompt('단가', item.price);
+            if (priceInput === null) return;
+
+            const quantity = parseInt(quantityInput, 10);
+            const price = parseFloat(priceInput);
+            if (!Number.isInteger(quantity) || quantity < 0 || Number.isNaN(price) || price < 0) {
+                showErrorMessage('유효한 수량과 단가를 입력해주세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/merchandise/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: name.trim(), description, quantity, price })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '상품 수정에 실패했습니다');
+                }
+                showMessage(result.message);
+                loadMerchandise();
+                loadMerchandiseForSales();
+                loadSalesHistory();
+            } catch (error) {
+                showErrorMessage(error.message || '상품을 수정하는 중 오류가 발생했습니다.');
+            }
         }
 
         // Delete merchandise
@@ -740,6 +782,7 @@
                     <p><strong>주소:</strong> ${consumer.address || '정보 없음'}</p>
                     <p><strong>기타 정보:</strong> ${consumer.notes || '정보 없음'}</p>
                     <div class="actions">
+                        <button class="secondary" onclick="editConsumer(${consumer.id})">수정</button>
                         <button class="danger" onclick="deleteConsumer(${consumer.id})">삭제</button>
                     </div>
                 </div>
@@ -771,6 +814,40 @@
                 showErrorMessage('소비자 등록 중 오류가 발생했습니다.');
             }
         });
+
+        async function editConsumer(id) {
+            const consumer = consumerItems.find((value) => value.id === id);
+            if (!consumer) return;
+
+            const name = prompt('이름', consumer.name);
+            if (name === null || !name.trim()) return;
+            const phone = prompt('전화번호', consumer.phone || '');
+            if (phone === null) return;
+            const address = prompt('주소', consumer.address || '');
+            if (address === null) return;
+            const notes = prompt('기타 정보', consumer.notes || '');
+            if (notes === null) return;
+
+            try {
+                const response = await fetch(`/api/consumers/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: name.trim(), phone, address, notes })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '소비자 수정에 실패했습니다');
+                }
+                showMessage(result.message);
+                loadConsumers();
+                loadConsumersForSales();
+                loadSalesHistory();
+            } catch (error) {
+                showErrorMessage(error.message || '소비자 정보를 수정하는 중 오류가 발생했습니다.');
+            }
+        }
 
         async function deleteConsumer(id) {
             if (!confirm('이 소비자를 삭제하시겠습니까?')) {
