@@ -13,7 +13,7 @@ from flask import Flask, render_template, request, jsonify, g, send_file, sessio
 app = Flask(__name__)
 DATABASE = os.environ.get('DATABASE_PATH', 'salesmanager.db')
 SITE_PASSWORD = os.environ.get('SITE_PASSWORD', 'salesmanager')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'salesmanager-secret-key')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(32).hex()
 
 
 def subtract_months(reference_time, months):

@@ -92,6 +92,47 @@
             display: block;
         }
 
+        #passwordOverlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+
+        #passwordOverlay.active {
+            display: flex;
+        }
+
+        .password-card {
+            background: #fff;
+            width: 100%;
+            max-width: 460px;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            padding: 24px;
+        }
+
+        .password-card h2 {
+            margin-top: 0;
+            font-size: 24px;
+        }
+
+        .password-card p {
+            margin-bottom: 12px;
+            color: #444;
+        }
+
+        #passwordError {
+            color: #d32f2f;
+            min-height: 28px;
+            margin-top: 8px;
+            font-size: 16px;
+        }
+
         .form-group {
             margin-bottom: 25px;
         }
@@ -430,6 +471,20 @@
     </style>
 </head>
 <body>
+    <div id="passwordOverlay" class="active">
+        <div class="password-card">
+            <h2>비밀번호 인증</h2>
+            <p>웹사이트 접근을 위해 비밀번호를 입력해주세요.</p>
+            <form id="passwordForm">
+                <div class="form-group">
+                    <label for="sitePassword">비밀번호</label>
+                    <input type="password" id="sitePassword" autocomplete="current-password" required>
+                </div>
+                <button type="submit">접속</button>
+                <p id="passwordError"></p>
+            </form>
+        </div>
+    </div>
     <div class="container">
         <h1>📦 세일즈 매니저</h1>
         
@@ -655,25 +710,19 @@
             showMessage(message, 'error');
         }
 
-        async function requestSitePassword() {
-            const enteredPassword = prompt('비밀번호를 입력해주세요');
-            if (enteredPassword === null) {
-                document.body.innerHTML = '<div style="max-width:600px;margin:80px auto;padding:20px;text-align:center;font-size:20px;">접근이 취소되었습니다.</div>';
-                return false;
-            }
+        async function requestSitePassword(password) {
             try {
                 const response = await fetch('/api/authenticate', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ password: enteredPassword })
+                    body: JSON.stringify({ password })
                 });
                 if (!response.ok) {
                     throw new Error('invalid');
                 }
             } catch (error) {
-                document.body.innerHTML = '<div style="max-width:600px;margin:80px auto;padding:20px;text-align:center;font-size:20px;">비밀번호가 올바르지 않습니다.</div>';
                 return false;
             }
             return true;
@@ -728,7 +777,7 @@
             };
             if (quantityValue !== '') {
                 const quantity = parseInt(quantityValue, 10);
-                if (!Number.isInteger(quantity) || quantity < 0) {
+                if (Number.isNaN(quantity) || quantity < 0) {
                     showErrorMessage('재고 수량은 0 이상의 정수여야 합니다.');
                     return;
                 }
@@ -1225,7 +1274,7 @@
             const quantityValue = document.getElementById('saleQuantity').value.trim();
             if (quantityValue !== '') {
                 const quantity = parseInt(quantityValue, 10);
-                if (!Number.isInteger(quantity) || quantity < 1) {
+                if (Number.isNaN(quantity) || quantity < 1) {
                     showErrorMessage('판매 수량은 1 이상의 숫자여야 합니다.');
                     return;
                 }
@@ -1501,12 +1550,23 @@
             field.addEventListener('change', () => field.setCustomValidity(''));
         });
 
-        (async () => {
-            if (await requestSitePassword()) {
-                loadTimezoneConfig();
-                loadMerchandise();
+        document.getElementById('passwordForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const passwordInput = document.getElementById('sitePassword');
+            const passwordError = document.getElementById('passwordError');
+            const overlay = document.getElementById('passwordOverlay');
+            const ok = await requestSitePassword(passwordInput.value);
+            if (!ok) {
+                passwordError.textContent = '비밀번호가 올바르지 않습니다.';
+                passwordInput.focus();
+                passwordInput.select();
+                return;
             }
-        })();
+            passwordError.textContent = '';
+            overlay.classList.remove('active');
+            loadTimezoneConfig();
+            loadMerchandise();
+        });
     </script>
 </body>
 </html>
