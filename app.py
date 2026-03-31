@@ -8,11 +8,12 @@ import hmac
 from io import BytesIO
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from flask import Flask, render_template, request, jsonify, g, send_file, Response
+from flask import Flask, render_template, request, jsonify, g, send_file, session
 
 app = Flask(__name__)
 DATABASE = os.environ.get('DATABASE_PATH', 'salesmanager.db')
 SITE_PASSWORD = os.environ.get('SITE_PASSWORD', 'salesmanager')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'salesmanager-secret-key')
 
 
 def subtract_months(reference_time, months):
@@ -128,25 +129,18 @@ def init_db():
 
 
 @app.before_request
-def ensure_db_initialized():
-    if app.config.get('TESTING'):
-        return
-
-    if request.endpoint == 'static':
-        return
-
-    auth = request.authorization
-    if not auth or not hmac.compare_digest(auth.password or '', SITE_PASSWORD):
-        return Response(
-            'Authentication required',
-            401,
-            {'WWW-Authenticate': 'Basic realm="Sales Manager"'}
-        )
-
-
-@app.before_request
 def ensure_db_ready():
     """Ensure required DB tables exist before handling requests"""
+    if not app.config.get('TESTING'):
+        if request.endpoint == 'static':
+            return
+
+        if request.endpoint in ('index', 'authenticate'):
+            return
+
+        if not session.get('authenticated'):
+            return jsonify({'error': '비밀번호 인증이 필요합니다'}), 401
+
     if not app.config.get('_DB_INITIALIZED', False):
         init_db()
         app.config['_DB_INITIALIZED'] = True
@@ -156,6 +150,20 @@ def ensure_db_ready():
 def index():
     """Main page"""
     return render_template('index.html')
+
+
+@app.route('/api/authenticate', methods=['POST'])
+def authenticate():
+    """Authenticate website access"""
+    data = request.json or {}
+    password = data.get('password', '')
+    if not isinstance(password, str):
+        return jsonify({'error': '비밀번호 형식이 올바르지 않습니다'}), 400
+    if not hmac.compare_digest(password, SITE_PASSWORD):
+        return jsonify({'error': '비밀번호가 올바르지 않습니다'}), 401
+
+    session['authenticated'] = True
+    return jsonify({'message': '인증되었습니다'})
 
 
 @app.route('/api/merchandise', methods=['GET'])

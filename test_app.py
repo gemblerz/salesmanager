@@ -501,6 +501,23 @@ class SalesManagerTestCase(unittest.TestCase):
         response = self.client.post('/api/config/timezone', json={'timezone': 'Not/A_Timezone'})
         self.assertEqual(response.status_code, 400)
 
+    def test_authenticate_rejects_invalid_password(self):
+        salesmanager.app.config['TESTING'] = False
+        try:
+            response = self.client.post('/api/authenticate', json={'password': 'wrong-password'})
+        finally:
+            salesmanager.app.config['TESTING'] = True
+        self.assertEqual(response.status_code, 401)
+
+    def test_authenticate_accepts_valid_password(self):
+        salesmanager.app.config['TESTING'] = False
+        try:
+            response = self.client.post('/api/authenticate', json={'password': salesmanager.SITE_PASSWORD})
+        finally:
+            salesmanager.app.config['TESTING'] = True
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['message'], '인증되었습니다')
+
 
 class SalesManagerAutoInitTestCase(unittest.TestCase):
     def setUp(self):

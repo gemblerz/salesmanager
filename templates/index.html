@@ -655,6 +655,30 @@
             showMessage(message, 'error');
         }
 
+        async function requestSitePassword() {
+            const enteredPassword = prompt('비밀번호를 입력해주세요');
+            if (enteredPassword === null) {
+                document.body.innerHTML = '<div style="max-width:600px;margin:80px auto;padding:20px;text-align:center;font-size:20px;">접근이 취소되었습니다.</div>';
+                return false;
+            }
+            try {
+                const response = await fetch('/api/authenticate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password: enteredPassword })
+                });
+                if (!response.ok) {
+                    throw new Error('invalid');
+                }
+            } catch (error) {
+                document.body.innerHTML = '<div style="max-width:600px;margin:80px auto;padding:20px;text-align:center;font-size:20px;">비밀번호가 올바르지 않습니다.</div>';
+                return false;
+            }
+            return true;
+        }
+
         // Load merchandise
         async function loadMerchandise() {
             try {
@@ -1477,9 +1501,12 @@
             field.addEventListener('change', () => field.setCustomValidity(''));
         });
 
-        // Load initial data
-        loadTimezoneConfig();
-        loadMerchandise();
+        (async () => {
+            if (await requestSitePassword()) {
+                loadTimezoneConfig();
+                loadMerchandise();
+            }
+        })();
     </script>
 </body>
 </html>
