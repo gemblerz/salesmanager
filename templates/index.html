@@ -92,6 +92,47 @@
             display: block;
         }
 
+        #passwordOverlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+
+        #passwordOverlay.active {
+            display: flex;
+        }
+
+        .password-card {
+            background: #fff;
+            width: 100%;
+            max-width: 460px;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            padding: 24px;
+        }
+
+        .password-card h2 {
+            margin-top: 0;
+            font-size: 24px;
+        }
+
+        .password-card p {
+            margin-bottom: 12px;
+            color: #444;
+        }
+
+        #passwordError {
+            color: #d32f2f;
+            min-height: 28px;
+            margin-top: 8px;
+            font-size: 16px;
+        }
+
         .form-group {
             margin-bottom: 25px;
         }
@@ -430,6 +471,20 @@
     </style>
 </head>
 <body>
+    <div id="passwordOverlay" class="active">
+        <div class="password-card">
+            <h2>비밀번호 인증</h2>
+            <p>웹사이트 접근을 위해 비밀번호를 입력해주세요.</p>
+            <form id="passwordForm">
+                <div class="form-group">
+                    <label for="sitePassword">비밀번호</label>
+                    <input type="password" id="sitePassword" autocomplete="current-password" required>
+                </div>
+                <button type="submit">접속</button>
+                <p id="passwordError"></p>
+            </form>
+        </div>
+    </div>
     <div class="container">
         <h1>📦 세일즈 매니저</h1>
         
@@ -456,8 +511,8 @@
                     <textarea id="description" name="description"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="quantity">재고 수량</label>
-                    <input type="number" id="quantity" name="quantity" min="0" required>
+                    <label for="quantity">재고 수량 (선택)</label>
+                    <input type="number" id="quantity" name="quantity" min="0" placeholder="미입력 시 0">
                 </div>
                 <div class="form-group">
                     <label for="price">단가 (₩)</label>
@@ -527,8 +582,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="saleQuantity">판매 수량</label>
-                    <input type="number" id="saleQuantity" name="quantity_sold" min="1" required>
+                    <label for="saleQuantity">판매 수량 (선택)</label>
+                    <input type="number" id="saleQuantity" name="quantity_sold" min="1" placeholder="미입력 시 1">
                 </div>
                 <div class="form-group">
                     <label for="saleTotalPrice">판매금 (₩, 선택 입력)</label>
@@ -655,6 +710,24 @@
             showMessage(message, 'error');
         }
 
+        async function requestSitePassword(password) {
+            try {
+                const response = await fetch('/api/authenticate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password })
+                });
+                if (!response.ok) {
+                    throw new Error('invalid');
+                }
+            } catch (error) {
+                return false;
+            }
+            return true;
+        }
+
         // Load merchandise
         async function loadMerchandise() {
             try {
@@ -696,12 +769,20 @@
         document.getElementById('merchandiseForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            const quantityValue = document.getElementById('quantity').value.trim();
             const formData = {
                 name: document.getElementById('name').value,
                 description: document.getElementById('description').value,
-                quantity: parseInt(document.getElementById('quantity').value),
                 price: parseFloat(document.getElementById('price').value)
             };
+            if (quantityValue !== '') {
+                const quantity = parseInt(quantityValue, 10);
+                if (Number.isNaN(quantity) || quantity < 0) {
+                    showErrorMessage('재고 수량은 0 이상의 정수여야 합니다.');
+                    return;
+                }
+                formData.quantity = quantity;
+            }
             
             try {
                 const isEditing = Number.isInteger(editingMerchandiseId);
@@ -919,7 +1000,7 @@
             try {
                 const response = await fetch('/api/merchandise');
                 const items = await response.json();
-                saleMerchandiseItems = items.filter(item => item.quantity > 0);
+                saleMerchandiseItems = items;
                 renderSaleMerchandiseOptions();
                 renderSelectedProductInfo(saleMerchandiseItems);
             } catch (error) {
@@ -1188,9 +1269,17 @@
             
             const formData = {
                 merchandise_id: parseInt(document.getElementById('saleItem').value),
-                consumer_id: parseInt(document.getElementById('saleConsumer').value),
-                quantity_sold: parseInt(document.getElementById('saleQuantity').value)
+                consumer_id: parseInt(document.getElementById('saleConsumer').value)
             };
+            const quantityValue = document.getElementById('saleQuantity').value.trim();
+            if (quantityValue !== '') {
+                const quantity = parseInt(quantityValue, 10);
+                if (Number.isNaN(quantity) || quantity < 1) {
+                    showErrorMessage('판매 수량은 1 이상의 숫자여야 합니다.');
+                    return;
+                }
+                formData.quantity_sold = quantity;
+            }
             const totalPriceValue = document.getElementById('saleTotalPrice').value.trim();
             if (totalPriceValue !== '') {
                 const totalPrice = parseFloat(totalPriceValue);
@@ -1461,9 +1550,23 @@
             field.addEventListener('change', () => field.setCustomValidity(''));
         });
 
-        // Load initial data
-        loadTimezoneConfig();
-        loadMerchandise();
+        document.getElementById('passwordForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const passwordInput = document.getElementById('sitePassword');
+            const passwordError = document.getElementById('passwordError');
+            const overlay = document.getElementById('passwordOverlay');
+            const ok = await requestSitePassword(passwordInput.value);
+            if (!ok) {
+                passwordError.textContent = '비밀번호가 올바르지 않습니다.';
+                passwordInput.focus();
+                passwordInput.select();
+                return;
+            }
+            passwordError.textContent = '';
+            overlay.classList.remove('active');
+            loadTimezoneConfig();
+            loadMerchandise();
+        });
     </script>
 </body>
 </html>

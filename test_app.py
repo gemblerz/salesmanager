@@ -173,9 +173,53 @@ class SalesManagerTestCase(unittest.TestCase):
                 (sale_id,)
             ).fetchone()
 
-        self.assertEqual(merchandise['quantity'], 5)
+        self.assertEqual(merchandise['quantity'], 8)
         self.assertEqual(sale['quantity_sold'], 5)
         self.assertEqual(sale['consumer_id'], consumer_id_2)
+        self.assertEqual(sale['total_price'], 500.0)
+
+    def test_add_merchandise_allows_missing_quantity(self):
+        response = self.client.post(
+            '/api/merchandise',
+            json={'name': '수량옵션상품', 'description': '설명', 'price': 900.0}
+        )
+        self.assertEqual(response.status_code, 200)
+        merchandise_id = response.get_json()['id']
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            merchandise = db.execute(
+                'SELECT quantity FROM merchandise WHERE id = ?',
+                (merchandise_id,)
+            ).fetchone()
+        self.assertEqual(merchandise['quantity'], 0)
+
+    def test_record_sale_allows_missing_quantity(self):
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            cursor = db.cursor()
+            cursor.execute(
+                'INSERT INTO merchandise (name, description, quantity, price) VALUES (?, ?, ?, ?)',
+                ('기본수량판매상품', '설명', 0, 500.0)
+            )
+            merchandise_id = cursor.lastrowid
+            cursor.execute('INSERT INTO consumers (name) VALUES (?)', ('기본수량소비자',))
+            consumer_id = cursor.lastrowid
+            db.commit()
+
+        response = self.client.post(
+            '/api/sales',
+            json={'merchandise_id': merchandise_id, 'consumer_id': consumer_id}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with salesmanager.app.app_context():
+            db = salesmanager.get_db()
+            sale = db.execute(
+                'SELECT quantity_sold, total_price FROM sales WHERE merchandise_id = ?',
+                (merchandise_id,)
+            ).fetchone()
+        self.assertEqual(sale['quantity_sold'], 1)
         self.assertEqual(sale['total_price'], 500.0)
 
     def test_record_sale_supports_manual_unit_price(self):
@@ -409,7 +453,7 @@ class SalesManagerTestCase(unittest.TestCase):
             merchandise = db.execute('SELECT quantity FROM merchandise WHERE id = ?', (merchandise_id,)).fetchone()
             sale = db.execute('SELECT id FROM sales WHERE id = ?', (sale_id,)).fetchone()
 
-        self.assertEqual(merchandise['quantity'], 10)
+        self.assertEqual(merchandise['quantity'], 7)
         self.assertIsNone(sale)
 
     def test_backup_database_download(self):
@@ -456,6 +500,23 @@ class SalesManagerTestCase(unittest.TestCase):
     def test_timezone_config_rejects_invalid_timezone(self):
         response = self.client.post('/api/config/timezone', json={'timezone': 'Not/A_Timezone'})
         self.assertEqual(response.status_code, 400)
+
+    def test_authenticate_rejects_invalid_password(self):
+        salesmanager.app.config['TESTING'] = False
+        try:
+            response = self.client.post('/api/authenticate', json={'password': 'wrong-password'})
+        finally:
+            salesmanager.app.config['TESTING'] = True
+        self.assertEqual(response.status_code, 401)
+
+    def test_authenticate_accepts_valid_password(self):
+        salesmanager.app.config['TESTING'] = False
+        try:
+            response = self.client.post('/api/authenticate', json={'password': salesmanager.SITE_PASSWORD})
+        finally:
+            salesmanager.app.config['TESTING'] = True
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['message'], '인증되었습니다')
 
 
 class SalesManagerAutoInitTestCase(unittest.TestCase):

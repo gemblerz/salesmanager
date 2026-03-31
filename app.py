@@ -4,13 +4,16 @@ Sales Manager - A simple merchandise management system
 import os
 import sqlite3
 import calendar
+import hmac
 from io import BytesIO
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from flask import Flask, render_template, request, jsonify, g, send_file
+from flask import Flask, render_template, request, jsonify, g, send_file, session
 
 app = Flask(__name__)
 DATABASE = os.environ.get('DATABASE_PATH', 'salesmanager.db')
+SITE_PASSWORD = os.environ.get('SITE_PASSWORD', 'salesmanager')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY') or f'{SITE_PASSWORD}-salesmanager-session'
 
 
 def subtract_months(reference_time, months):
@@ -126,8 +129,18 @@ def init_db():
 
 
 @app.before_request
-def ensure_db_initialized():
+def ensure_db_ready():
     """Ensure required DB tables exist before handling requests"""
+    if not app.config.get('TESTING'):
+        if request.endpoint == 'static':
+            return
+
+        if request.endpoint in ('index', 'authenticate'):
+            return
+
+        if not session.get('authenticated'):
+            return jsonify({'error': '비밀번호 인증이 필요합니다'}), 401
+
     if not app.config.get('_DB_INITIALIZED', False):
         init_db()
         app.config['_DB_INITIALIZED'] = True
@@ -137,6 +150,20 @@ def ensure_db_initialized():
 def index():
     """Main page"""
     return render_template('index.html')
+
+
+@app.route('/api/authenticate', methods=['POST'])
+def authenticate():
+    """Authenticate website access"""
+    data = request.json or {}
+    password = data.get('password', '')
+    if not isinstance(password, str):
+        return jsonify({'error': '비밀번호 형식이 올바르지 않습니다'}), 400
+    if not hmac.compare_digest(password, SITE_PASSWORD):
+        return jsonify({'error': '비밀번호가 올바르지 않습니다'}), 401
+
+    session['authenticated'] = True
+    return jsonify({'message': '인증되었습니다'})
 
 
 @app.route('/api/merchandise', methods=['GET'])
@@ -156,10 +183,16 @@ def add_merchandise():
     db = get_db()
     cursor = db.cursor()
     
+    quantity = data.get('quantity')
+    if quantity in (None, ''):
+        quantity = 0
+    if not isinstance(quantity, int) or quantity < 0:
+        return jsonify({'error': '재고 수량은 0 이상의 정수여야 합니다'}), 400
+
     cursor.execute('''
         INSERT INTO merchandise (name, description, quantity, price)
         VALUES (?, ?, ?, ?)
-    ''', (data['name'], data.get('description', ''), data['quantity'], data['price']))
+    ''', (data['name'], data.get('description', ''), quantity, data['price']))
     
     db.commit()
     return jsonify({'id': cursor.lastrowid, 'message': '상품이 성공적으로 등록되었습니다'})
@@ -172,11 +205,17 @@ def update_merchandise(merchandise_id):
     db = get_db()
     cursor = db.cursor()
     
+    quantity = data.get('quantity')
+    if quantity in (None, ''):
+        quantity = 0
+    if not isinstance(quantity, int) or quantity < 0:
+        return jsonify({'error': '재고 수량은 0 이상의 정수여야 합니다'}), 400
+
     cursor.execute('''
         UPDATE merchandise 
         SET name = ?, description = ?, quantity = ?, price = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-    ''', (data['name'], data.get('description', ''), data['quantity'], data['price'], merchandise_id))
+    ''', (data['name'], data.get('description', ''), quantity, data['price'], merchandise_id))
     
     db.commit()
     return jsonify({'message': '상품 정보가 업데이트되었습니다'})
@@ -207,16 +246,14 @@ def record_sale():
     db = get_db()
     cursor = db.cursor()
     
-    # Get current quantity
-    cursor.execute('SELECT quantity, price FROM merchandise WHERE id = ?', (data['merchandise_id'],))
+    cursor.execute('SELECT price FROM merchandise WHERE id = ?', (data['merchandise_id'],))
     row = cursor.fetchone()
     
     if not row:
         return jsonify({'error': '상품을 찾을 수 없습니다'}), 404
     
-    current_quantity = row['quantity']
     price = row['price']
-    quantity_sold = data['quantity_sold']
+    quantity_sold = data.get('quantity_sold', 1)
     if not isinstance(quantity_sold, int) or quantity_sold <= 0:
         return jsonify({'error': '판매 수량은 1 이상이어야 합니다'}), 400
 
@@ -239,21 +276,11 @@ def record_sale():
     if not cursor.fetchone():
         return jsonify({'error': '소비자를 찾을 수 없습니다'}), 404
     
-    if current_quantity < quantity_sold:
-        return jsonify({'error': '재고가 부족합니다'}), 400
-    
     # Record sale
     cursor.execute('''
         INSERT INTO sales (merchandise_id, consumer_id, quantity_sold, unit_price, total_price)
         VALUES (?, ?, ?, ?, ?)
     ''', (data['merchandise_id'], consumer_id, quantity_sold, unit_price, total_price))
-    
-    # Update merchandise quantity
-    cursor.execute('''
-        UPDATE merchandise 
-        SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    ''', (quantity_sold, data['merchandise_id']))
     
     db.commit()
     return jsonify({'message': '판매가 기록되었습니다', 'total_price': total_price})
@@ -384,19 +411,6 @@ def update_sale(sale_id):
     if not sale:
         return jsonify({'error': '판매 기록을 찾을 수 없습니다'}), 404
 
-    quantity_diff = quantity_sold - sale['quantity_sold']
-    if quantity_diff > 0:
-        cursor.execute('SELECT quantity FROM merchandise WHERE id = ?', (sale['merchandise_id'],))
-        merchandise = cursor.fetchone()
-        if not merchandise or merchandise['quantity'] < quantity_diff:
-            return jsonify({'error': '재고가 부족합니다'}), 400
-
-    cursor.execute('''
-        UPDATE merchandise
-        SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    ''', (quantity_diff, sale['merchandise_id']))
-
     if total_price_input is not None:
         if not isinstance(total_price_input, (int, float)) or total_price_input <= 0:
             return jsonify({'error': '판매금은 0보다 커야 합니다'}), 400
@@ -428,11 +442,6 @@ def delete_sale(sale_id):
     if not sale:
         return jsonify({'error': '판매 기록을 찾을 수 없습니다'}), 404
 
-    cursor.execute('''
-        UPDATE merchandise
-        SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    ''', (sale['quantity_sold'], sale['merchandise_id']))
     cursor.execute('DELETE FROM sales WHERE id = ?', (sale_id,))
     db.commit()
     return jsonify({'message': '판매 기록이 삭제되었습니다'})
