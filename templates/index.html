@@ -456,8 +456,8 @@
                     <textarea id="description" name="description"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="quantity">재고 수량</label>
-                    <input type="number" id="quantity" name="quantity" min="0" required>
+                    <label for="quantity">재고 수량 (선택)</label>
+                    <input type="number" id="quantity" name="quantity" min="0" placeholder="미입력 시 0">
                 </div>
                 <div class="form-group">
                     <label for="price">단가 (₩)</label>
@@ -527,8 +527,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="saleQuantity">판매 수량</label>
-                    <input type="number" id="saleQuantity" name="quantity_sold" min="1" required>
+                    <label for="saleQuantity">판매 수량 (선택)</label>
+                    <input type="number" id="saleQuantity" name="quantity_sold" min="1" placeholder="미입력 시 1">
                 </div>
                 <div class="form-group">
                     <label for="saleTotalPrice">판매금 (₩, 선택 입력)</label>
@@ -696,12 +696,20 @@
         document.getElementById('merchandiseForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            const quantityValue = document.getElementById('quantity').value.trim();
             const formData = {
                 name: document.getElementById('name').value,
                 description: document.getElementById('description').value,
-                quantity: parseInt(document.getElementById('quantity').value),
                 price: parseFloat(document.getElementById('price').value)
             };
+            if (quantityValue !== '') {
+                const quantity = parseInt(quantityValue, 10);
+                if (!Number.isInteger(quantity) || quantity < 0) {
+                    showErrorMessage('재고 수량은 0 이상의 정수여야 합니다.');
+                    return;
+                }
+                formData.quantity = quantity;
+            }
             
             try {
                 const isEditing = Number.isInteger(editingMerchandiseId);
@@ -919,7 +927,7 @@
             try {
                 const response = await fetch('/api/merchandise');
                 const items = await response.json();
-                saleMerchandiseItems = items.filter(item => item.quantity > 0);
+                saleMerchandiseItems = items;
                 renderSaleMerchandiseOptions();
                 renderSelectedProductInfo(saleMerchandiseItems);
             } catch (error) {
@@ -1188,9 +1196,17 @@
             
             const formData = {
                 merchandise_id: parseInt(document.getElementById('saleItem').value),
-                consumer_id: parseInt(document.getElementById('saleConsumer').value),
-                quantity_sold: parseInt(document.getElementById('saleQuantity').value)
+                consumer_id: parseInt(document.getElementById('saleConsumer').value)
             };
+            const quantityValue = document.getElementById('saleQuantity').value.trim();
+            if (quantityValue !== '') {
+                const quantity = parseInt(quantityValue, 10);
+                if (!Number.isInteger(quantity) || quantity < 1) {
+                    showErrorMessage('판매 수량은 1 이상의 숫자여야 합니다.');
+                    return;
+                }
+                formData.quantity_sold = quantity;
+            }
             const totalPriceValue = document.getElementById('saleTotalPrice').value.trim();
             if (totalPriceValue !== '') {
                 const totalPrice = parseFloat(totalPriceValue);
