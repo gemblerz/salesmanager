@@ -38,6 +38,22 @@ A simple, user-friendly web application for managing merchandise inventory and t
    - Start the application
 4. Open your browser to http://127.0.0.1:5000
 
+### Linux (systemd + Docker, starts on boot)
+
+1. Install Docker and ensure it is running.
+2. Run:
+   ```bash
+   chmod +x ./install.sh
+   sudo ./install.sh
+   ```
+3. This installs and enables `salesmanager.service`, which runs:
+   - `ghcr.io/gemblerz/salesmanager:latest`
+   - on port `5000`
+4. Verify service status at any time:
+   ```bash
+   ./install.sh --check
+   ```
+
 ### Manual Installation
 
 If the automatic scripts don't work, you can run manually:
