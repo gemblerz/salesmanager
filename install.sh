@@ -9,11 +9,15 @@ IMAGE="ghcr.io/gemblerz/salesmanager:latest"
 HOST_PORT="5000"
 CONTAINER_PORT="5000"
 
-check_service() {
-  if ! command -v systemctl >/dev/null 2>&1; then
-    echo "Error: systemctl is not available on this system."
+ensure_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Error: $1 is not installed or not in PATH."
     exit 1
   fi
+}
+
+check_service() {
+  ensure_command systemctl
 
   if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
     echo "Service ${SERVICE_NAME}.service is not installed."
@@ -44,15 +48,8 @@ if [[ ! -d /run/systemd/system ]]; then
   exit 1
 fi
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Error: docker is not installed or not in PATH."
-  exit 1
-fi
-
-if ! command -v systemctl >/dev/null 2>&1; then
-  echo "Error: systemctl is not available on this system."
-  exit 1
-fi
+ensure_command docker
+ensure_command systemctl
 
 DOCKER_BIN="$(command -v docker)"
 
