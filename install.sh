@@ -4,7 +4,7 @@ set -euo pipefail
 
 SERVICE_NAME="salesmanager"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-CONTAINER_NAME="salesmanager"
+CONTAINER_NAME="salesmanager-systemd"
 IMAGE="ghcr.io/gemblerz/salesmanager:latest"
 HOST_PORT="5000"
 CONTAINER_PORT="5000"
@@ -67,7 +67,7 @@ Type=simple
 Restart=always
 RestartSec=5
 ExecStartPre=-${DOCKER_BIN} rm -f ${CONTAINER_NAME}
-ExecStart=${DOCKER_BIN} run --rm --name ${CONTAINER_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE}
+ExecStart=${DOCKER_BIN} run --pull always --rm --name ${CONTAINER_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE}
 ExecStop=${DOCKER_BIN} stop ${CONTAINER_NAME}
 
 [Install]
