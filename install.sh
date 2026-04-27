@@ -146,6 +146,8 @@ if [[ -z "$DATABASE_PATH" ]]; then
 fi
 
 mkdir -p "$CONFIG_DIR"
+umask_original="$(umask)"
+umask 077
 {
   printf 'DATABASE_PATH=%s\n' "$DATABASE_PATH"
   printf 'DEPLOYMENT_TYPE=%s\n' "$DEPLOYMENT_TYPE"
@@ -153,7 +155,7 @@ mkdir -p "$CONFIG_DIR"
     printf 'SITE_PASSWORD=%s\n' "$SITE_PASSWORD"
   fi
 } > "$ENV_FILE"
-chmod 600 "$ENV_FILE"
+umask "$umask_original"
 
 echo "Pulling container image: ${IMAGE}"
 "${DOCKER_BIN}" pull "${IMAGE}"
