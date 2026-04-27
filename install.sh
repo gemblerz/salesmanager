@@ -145,8 +145,7 @@ if [[ -z "$DATABASE_PATH" ]]; then
   exit 1
 fi
 
-mkdir -p "$CONFIG_DIR"
-chmod 700 "$CONFIG_DIR"
+install -d -m 700 "$CONFIG_DIR"
 (
   umask 077
   {
@@ -157,6 +156,7 @@ chmod 700 "$CONFIG_DIR"
     fi
   } > "$ENV_FILE"
 )
+chmod 600 "$ENV_FILE"
 
 echo "Pulling container image: ${IMAGE}"
 "${DOCKER_BIN}" pull "${IMAGE}"
