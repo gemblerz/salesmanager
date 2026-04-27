@@ -12,6 +12,7 @@ CONFIG_DIR="/etc/salesmanager"
 ENV_FILE="${CONFIG_DIR}/app.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ARGS_FILE="${SCRIPT_DIR}/app-args.yml"
+DATABASE_PATH="database/salesmanager.db"
 DEPLOYMENT_TYPE="public"
 SITE_PASSWORD="salesmanager"
 
@@ -125,6 +126,9 @@ fi
 if password_value="$(read_yaml_scalar "$APP_ARGS_FILE" "site_password")"; then
   SITE_PASSWORD="$password_value"
 fi
+if database_path_value="$(read_yaml_scalar "$APP_ARGS_FILE" "database_path")"; then
+  DATABASE_PATH="$database_path_value"
+fi
 
 if [[ "$DEPLOYMENT_TYPE" != "local" && "$DEPLOYMENT_TYPE" != "public" ]]; then
   echo "Error: deployment_type must be 'local' or 'public' in $APP_ARGS_FILE"
@@ -136,8 +140,14 @@ if [[ "$DEPLOYMENT_TYPE" == "public" && -z "$SITE_PASSWORD" ]]; then
   exit 1
 fi
 
+if [[ -z "$DATABASE_PATH" ]]; then
+  echo "Error: database_path must not be empty in $APP_ARGS_FILE"
+  exit 1
+fi
+
 mkdir -p "$CONFIG_DIR"
 {
+  printf 'DATABASE_PATH=%s\n' "$DATABASE_PATH"
   printf 'DEPLOYMENT_TYPE=%s\n' "$DEPLOYMENT_TYPE"
   if [[ "$DEPLOYMENT_TYPE" == "public" ]]; then
     printf 'SITE_PASSWORD=%s\n' "$SITE_PASSWORD"

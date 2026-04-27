@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Flask, render_template, request, jsonify, g, send_file, session
 
 app = Flask(__name__)
-DATABASE = os.environ.get('DATABASE_PATH', 'salesmanager.db')
+DATABASE = os.environ.get('DATABASE_PATH', 'database/salesmanager.db')
 SITE_PASSWORD = os.environ.get('SITE_PASSWORD', 'salesmanager')
 DEPLOYMENT_TYPE = os.environ.get('DEPLOYMENT_TYPE', 'local').strip().lower()
 app.secret_key = os.environ.get('FLASK_SECRET_KEY') or f'{SITE_PASSWORD}-salesmanager-session'
