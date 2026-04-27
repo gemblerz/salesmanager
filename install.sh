@@ -146,6 +146,7 @@ if [[ -z "$DATABASE_PATH" ]]; then
 fi
 
 mkdir -p "$CONFIG_DIR"
+chmod 700 "$CONFIG_DIR"
 (
   umask 077
   {
