@@ -26,7 +26,7 @@ ensure_command() {
 check_service() {
   ensure_command systemctl
 
-  if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
+  if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
     echo "Service ${SERVICE_NAME}.service is not installed."
     exit 1
   fi
