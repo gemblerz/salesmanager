@@ -588,8 +588,32 @@ class RunScriptTestCase(unittest.TestCase):
             args = run.parse_args([])
         self.assertEqual(args.timeout, 240)
 
+    def test_parse_args_supports_worker_class_argument(self):
+        args = run.parse_args(['--worker-class', 'sync'])
+        self.assertEqual(args.worker_class, 'sync')
+
+    def test_parse_args_uses_worker_class_environment_default(self):
+        with patch.dict(os.environ, {'GUNICORN_WORKER_CLASS': 'sync'}):
+            args = run.parse_args([])
+        self.assertEqual(args.worker_class, 'sync')
+
+    def test_parse_args_supports_threads_argument(self):
+        args = run.parse_args(['--threads', '8'])
+        self.assertEqual(args.threads, 8)
+
+    def test_parse_args_uses_threads_environment_default(self):
+        with patch.dict(os.environ, {'GUNICORN_THREADS': '6'}):
+            args = run.parse_args([])
+        self.assertEqual(args.threads, 6)
+
     def test_main_sets_database_path_and_starts_gunicorn(self):
-        parsed_args = SimpleNamespace(database_path='/mnt/data/app.db', bind='127.0.0.1:5001', timeout=120)
+        parsed_args = SimpleNamespace(
+            database_path='/mnt/data/app.db',
+            bind='127.0.0.1:5001',
+            worker_class='gthread',
+            threads=4,
+            timeout=120
+        )
         with patch('run.parse_args', return_value=parsed_args):
             with patch('app.init_db') as init_db:
                 with patch('run.subprocess.call', return_value=0) as gunicorn_call:
@@ -602,6 +626,8 @@ class RunScriptTestCase(unittest.TestCase):
         gunicorn_call.assert_called_once_with([
             'gunicorn',
             '--bind', '127.0.0.1:5001',
+            '--worker-class', 'gthread',
+            '--threads', '4',
             '--timeout', '120',
             'app:app'
         ])

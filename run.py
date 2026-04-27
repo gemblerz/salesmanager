@@ -31,6 +31,17 @@ def parse_args(argv=None):
         default=_int_env('GUNICORN_TIMEOUT', 120),
         help='Gunicorn worker timeout in seconds'
     )
+    parser.add_argument(
+        '--worker-class',
+        default=os.environ.get('GUNICORN_WORKER_CLASS', 'gthread'),
+        help='Gunicorn worker class'
+    )
+    parser.add_argument(
+        '--threads',
+        type=int,
+        default=_int_env('GUNICORN_THREADS', 4),
+        help='Gunicorn threads per worker'
+    )
     return parser.parse_args(argv)
 
 
@@ -43,6 +54,8 @@ def main(argv=None):
     return subprocess.call([
         'gunicorn',
         '--bind', args.bind,
+        '--worker-class', args.worker_class,
+        '--threads', str(args.threads),
         '--timeout', str(args.timeout),
         'app:app'
     ])

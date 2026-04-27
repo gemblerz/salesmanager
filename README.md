@@ -77,7 +77,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Run the application
-gunicorn --bind 127.0.0.1:5000 --timeout 120 app:app
+gunicorn --bind 127.0.0.1:5000 --worker-class gthread --threads 4 --timeout 120 app:app
 ```
 
 ### Debug Mode
@@ -142,7 +142,7 @@ Press `Ctrl+C` in the terminal/command prompt where the application is running.
 
 **Port already in use**: If port 5000 is already in use, run Gunicorn with a different port:
 ```bash
-gunicorn --bind 127.0.0.1:5001 --timeout 120 app:app
+gunicorn --bind 127.0.0.1:5001 --worker-class gthread --threads 4 --timeout 120 app:app
 ```
 
 **Database locked error**: Close any other instances of the application that might be accessing the database.
