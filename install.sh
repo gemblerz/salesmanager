@@ -146,16 +146,16 @@ if [[ -z "$DATABASE_PATH" ]]; then
 fi
 
 mkdir -p "$CONFIG_DIR"
-umask_original="$(umask)"
-umask 077
-{
-  printf 'DATABASE_PATH=%s\n' "$DATABASE_PATH"
-  printf 'DEPLOYMENT_TYPE=%s\n' "$DEPLOYMENT_TYPE"
-  if [[ "$DEPLOYMENT_TYPE" == "public" ]]; then
-    printf 'SITE_PASSWORD=%s\n' "$SITE_PASSWORD"
-  fi
-} > "$ENV_FILE"
-umask "$umask_original"
+(
+  umask 077
+  {
+    printf 'DATABASE_PATH=%s\n' "$DATABASE_PATH"
+    printf 'DEPLOYMENT_TYPE=%s\n' "$DEPLOYMENT_TYPE"
+    if [[ "$DEPLOYMENT_TYPE" == "public" ]]; then
+      printf 'SITE_PASSWORD=%s\n' "$SITE_PASSWORD"
+    fi
+  } > "$ENV_FILE"
+)
 
 echo "Pulling container image: ${IMAGE}"
 "${DOCKER_BIN}" pull "${IMAGE}"
