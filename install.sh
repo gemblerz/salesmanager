@@ -52,9 +52,9 @@ trim_value() {
   local value="$1"
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
-  if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+  if [[ "$value" == \"* && "$value" == *\" ]]; then
     value="${value:1:${#value}-2}"
-  elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+  elif [[ "$value" == \'* && "$value" == *\' ]]; then
     value="${value:1:${#value}-2}"
   fi
   printf '%s' "$value"
@@ -120,7 +120,7 @@ if [[ ! -f "$APP_ARGS_FILE" ]]; then
 fi
 
 if deployment_value="$(read_yaml_scalar "$APP_ARGS_FILE" "deployment_type")"; then
-  DEPLOYMENT_TYPE="${deployment_value,,}"
+  DEPLOYMENT_TYPE="$(printf '%s' "$deployment_value" | tr '[:upper:]' '[:lower:]')"
 fi
 if password_value="$(read_yaml_scalar "$APP_ARGS_FILE" "site_password")"; then
   SITE_PASSWORD="$password_value"

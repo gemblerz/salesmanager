@@ -658,7 +658,7 @@
 
     <script>
         const DEFAULT_TIMEZONE = 'Asia/Seoul';
-        const SITE_PASSWORD_REQUIRED = {{ 'true' if site_password_required else 'false' }};
+        const SITE_PASSWORD_REQUIRED = {{ site_password_required|tojson }};
         const numberFormatter = new Intl.NumberFormat('ko-KR');
         let saleMerchandiseItems = [];
         let saleConsumers = [];

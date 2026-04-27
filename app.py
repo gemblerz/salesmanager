@@ -162,7 +162,6 @@ def index():
 def authenticate():
     """Authenticate website access"""
     if not is_site_password_required():
-        session['authenticated'] = True
         return jsonify({'message': '인증이 필요하지 않은 배포 모드입니다'})
 
     data = request.json or {}
