@@ -46,6 +46,7 @@ A simple, user-friendly web application for managing merchandise inventory and t
    chmod +x ./install.sh
    sudo ./install.sh --app-args ./app-args.yml
    ```
+   If `salesmanager.service` is already running, the installer stops it first before reinstalling.
 3. This installs and enables `salesmanager.service`, which runs:
     - `ghcr.io/gemblerz/salesmanager:latest`
     - on port `5000`

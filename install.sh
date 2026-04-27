@@ -41,6 +41,17 @@ check_service() {
   exit 1
 }
 
+stop_service_if_running() {
+  if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
+    return 0
+  fi
+
+  if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
+    echo "Stopping ${SERVICE_NAME}.service before reinstall..."
+    systemctl stop "${SERVICE_NAME}.service"
+  fi
+}
+
 usage() {
   cat <<EOF
 Usage:
@@ -144,6 +155,8 @@ if [[ -z "$DATABASE_PATH" ]]; then
   echo "Error: database_path must not be empty in $APP_ARGS_FILE"
   exit 1
 fi
+
+stop_service_if_running
 
 install -d -m 700 "$CONFIG_DIR"
 (
