@@ -48,8 +48,9 @@ A simple, user-friendly web application for managing merchandise inventory and t
    ```
    If `salesmanager.service` is already running, the installer stops it first before reinstalling.
 3. This installs and enables `salesmanager.service`, which runs:
-    - `ghcr.io/gemblerz/salesmanager:latest`
-    - on port `5000`
+     - `ghcr.io/gemblerz/salesmanager:latest`
+     - on port `5000`
+     - with `database_path` bind-mounted from host into container
 4. Configure deployment/auth behavior in `app-args.yml`:
    - `database_path: database/salesmanager.db` (default DB file path)
    - `deployment_type: local` → no site password prompt
@@ -78,7 +79,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Run the application
-gunicorn --bind 127.0.0.1:5000 --worker-class gthread --threads 4 --timeout 120 app:app
+gunicorn --bind 127.0.0.1:5000 app:app
 ```
 
 ### Debug Mode
@@ -143,7 +144,7 @@ Press `Ctrl+C` in the terminal/command prompt where the application is running.
 
 **Port already in use**: If port 5000 is already in use, run Gunicorn with a different port:
 ```bash
-gunicorn --bind 127.0.0.1:5001 --worker-class gthread --threads 4 --timeout 120 app:app
+gunicorn --bind 127.0.0.1:5001 app:app
 ```
 
 **Database locked error**: Close any other instances of the application that might be accessing the database.

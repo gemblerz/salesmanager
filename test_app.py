@@ -579,15 +579,6 @@ class RunScriptTestCase(unittest.TestCase):
             args = run.parse_args([])
         self.assertEqual(args.database_path, '/mnt/data/sales.db')
 
-    def test_parse_args_supports_timeout_argument(self):
-        args = run.parse_args(['--timeout', '180'])
-        self.assertEqual(args.timeout, 180)
-
-    def test_parse_args_uses_gunicorn_timeout_environment_default(self):
-        with patch.dict(os.environ, {'GUNICORN_TIMEOUT': '240'}):
-            args = run.parse_args([])
-        self.assertEqual(args.timeout, 240)
-
     def test_parse_args_supports_worker_class_argument(self):
         args = run.parse_args(['--worker-class', 'sync'])
         self.assertEqual(args.worker_class, 'sync')
@@ -597,22 +588,11 @@ class RunScriptTestCase(unittest.TestCase):
             args = run.parse_args([])
         self.assertEqual(args.worker_class, 'sync')
 
-    def test_parse_args_supports_threads_argument(self):
-        args = run.parse_args(['--threads', '8'])
-        self.assertEqual(args.threads, 8)
-
-    def test_parse_args_uses_threads_environment_default(self):
-        with patch.dict(os.environ, {'GUNICORN_THREADS': '6'}):
-            args = run.parse_args([])
-        self.assertEqual(args.threads, 6)
-
     def test_main_sets_database_path_and_starts_gunicorn(self):
         parsed_args = SimpleNamespace(
             database_path='/mnt/data/app.db',
             bind='127.0.0.1:5001',
-            worker_class='gthread',
-            threads=4,
-            timeout=120
+            worker_class='gthread'
         )
         with patch('run.parse_args', return_value=parsed_args):
             with patch('app.init_db') as init_db:
@@ -627,8 +607,6 @@ class RunScriptTestCase(unittest.TestCase):
             'gunicorn',
             '--bind', '127.0.0.1:5001',
             '--worker-class', 'gthread',
-            '--threads', '4',
-            '--timeout', '120',
             'app:app'
         ])
 

@@ -42,7 +42,7 @@ check_service() {
 }
 
 stop_service_if_running() {
-  if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
+  if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}[.]service"; then
     return 0
   fi
 
@@ -156,7 +156,15 @@ if [[ -z "$DATABASE_PATH" ]]; then
   exit 1
 fi
 
+if [[ "$DATABASE_PATH" != /* ]]; then
+  DATABASE_PATH="${SCRIPT_DIR}/${DATABASE_PATH}"
+fi
+DATABASE_DIR="$(dirname "$DATABASE_PATH")"
+
 stop_service_if_running
+
+install -d -m 700 "$DATABASE_DIR"
+touch "$DATABASE_PATH"
 
 install -d -m 700 "$CONFIG_DIR"
 (
@@ -185,7 +193,7 @@ Type=simple
 Restart=always
 RestartSec=5
 ExecStartPre=-${DOCKER_BIN} rm -f ${CONTAINER_NAME}
-ExecStart=${DOCKER_BIN} run --pull always --rm --name ${CONTAINER_NAME} --env-file ${ENV_FILE} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE}
+ExecStart=${DOCKER_BIN} run --pull always --rm --name ${CONTAINER_NAME} --env-file ${ENV_FILE} -v ${DATABASE_DIR}:${DATABASE_DIR} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE}
 ExecStop=${DOCKER_BIN} stop ${CONTAINER_NAME}
 
 [Install]
