@@ -13,7 +13,13 @@ from flask import Flask, render_template, request, jsonify, g, send_file, sessio
 app = Flask(__name__)
 DATABASE = os.environ.get('DATABASE_PATH', 'salesmanager.db')
 SITE_PASSWORD = os.environ.get('SITE_PASSWORD', 'salesmanager')
+DEPLOYMENT_TYPE = os.environ.get('DEPLOYMENT_TYPE', 'local').strip().lower()
 app.secret_key = os.environ.get('FLASK_SECRET_KEY') or f'{SITE_PASSWORD}-salesmanager-session'
+
+
+def is_site_password_required():
+    """Whether site password authentication is required for this deployment."""
+    return DEPLOYMENT_TYPE == 'public'
 
 
 def subtract_months(reference_time, months):
@@ -138,7 +144,7 @@ def ensure_db_ready():
         if request.endpoint in ('index', 'authenticate'):
             return
 
-        if not session.get('authenticated'):
+        if is_site_password_required() and not session.get('authenticated'):
             return jsonify({'error': '비밀번호 인증이 필요합니다'}), 401
 
     if not app.config.get('_DB_INITIALIZED', False):
@@ -149,12 +155,16 @@ def ensure_db_ready():
 @app.route('/')
 def index():
     """Main page"""
-    return render_template('index.html')
+    return render_template('index.html', site_password_required=is_site_password_required())
 
 
 @app.route('/api/authenticate', methods=['POST'])
 def authenticate():
     """Authenticate website access"""
+    if not is_site_password_required():
+        session['authenticated'] = True
+        return jsonify({'message': '인증이 필요하지 않은 배포 모드입니다'})
+
     data = request.json or {}
     password = data.get('password', '')
     if not isinstance(password, str):

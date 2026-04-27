@@ -44,12 +44,16 @@ A simple, user-friendly web application for managing merchandise inventory and t
 2. Run:
    ```bash
    chmod +x ./install.sh
-   sudo ./install.sh
+   sudo ./install.sh --app-args ./app-args.yml
    ```
 3. This installs and enables `salesmanager.service`, which runs:
-   - `ghcr.io/gemblerz/salesmanager:latest`
-   - on port `5000`
-4. Verify service status at any time:
+    - `ghcr.io/gemblerz/salesmanager:latest`
+    - on port `5000`
+4. Configure deployment/auth behavior in `app-args.yml`:
+   - `deployment_type: local` → no site password prompt
+   - `deployment_type: public` → site password prompt enabled
+   - `site_password` is used only for `public`
+5. Verify service status at any time:
    ```bash
    ./install.sh --check
    ```

@@ -504,7 +504,8 @@ class SalesManagerTestCase(unittest.TestCase):
     def test_authenticate_rejects_invalid_password(self):
         salesmanager.app.config['TESTING'] = False
         try:
-            response = self.client.post('/api/authenticate', json={'password': 'wrong-password'})
+            with patch.object(salesmanager, 'DEPLOYMENT_TYPE', 'public'):
+                response = self.client.post('/api/authenticate', json={'password': 'wrong-password'})
         finally:
             salesmanager.app.config['TESTING'] = True
         self.assertEqual(response.status_code, 401)
@@ -512,11 +513,21 @@ class SalesManagerTestCase(unittest.TestCase):
     def test_authenticate_accepts_valid_password(self):
         salesmanager.app.config['TESTING'] = False
         try:
-            response = self.client.post('/api/authenticate', json={'password': salesmanager.SITE_PASSWORD})
+            with patch.object(salesmanager, 'DEPLOYMENT_TYPE', 'public'):
+                response = self.client.post('/api/authenticate', json={'password': salesmanager.SITE_PASSWORD})
         finally:
             salesmanager.app.config['TESTING'] = True
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['message'], '인증되었습니다')
+
+    def test_local_deployment_does_not_require_password(self):
+        salesmanager.app.config['TESTING'] = False
+        try:
+            with patch.object(salesmanager, 'DEPLOYMENT_TYPE', 'local'):
+                response = self.client.get('/api/merchandise')
+        finally:
+            salesmanager.app.config['TESTING'] = True
+        self.assertEqual(response.status_code, 200)
 
 
 class SalesManagerAutoInitTestCase(unittest.TestCase):
