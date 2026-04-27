@@ -579,8 +579,17 @@ class RunScriptTestCase(unittest.TestCase):
             args = run.parse_args([])
         self.assertEqual(args.database_path, '/mnt/data/sales.db')
 
+    def test_parse_args_supports_timeout_argument(self):
+        args = run.parse_args(['--timeout', '180'])
+        self.assertEqual(args.timeout, 180)
+
+    def test_parse_args_uses_gunicorn_timeout_environment_default(self):
+        with patch.dict(os.environ, {'GUNICORN_TIMEOUT': '240'}):
+            args = run.parse_args([])
+        self.assertEqual(args.timeout, 240)
+
     def test_main_sets_database_path_and_starts_gunicorn(self):
-        parsed_args = SimpleNamespace(database_path='/mnt/data/app.db', bind='127.0.0.1:5001')
+        parsed_args = SimpleNamespace(database_path='/mnt/data/app.db', bind='127.0.0.1:5001', timeout=120)
         with patch('run.parse_args', return_value=parsed_args):
             with patch('app.init_db') as init_db:
                 with patch('run.subprocess.call', return_value=0) as gunicorn_call:
@@ -590,7 +599,12 @@ class RunScriptTestCase(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(database_path, '/mnt/data/app.db')
         init_db.assert_called_once()
-        gunicorn_call.assert_called_once_with(['gunicorn', '--bind', '127.0.0.1:5001', 'app:app'])
+        gunicorn_call.assert_called_once_with([
+            'gunicorn',
+            '--bind', '127.0.0.1:5001',
+            '--timeout', '120',
+            'app:app'
+        ])
 
 
 class RoutingIntegrityTestCase(unittest.TestCase):
