@@ -1,0 +1,12 @@
+# Sales Manager application arguments for install.sh
+#
+# Database path used by the app inside the container.
+database_path: database/salesmanager.db
+#
+# Deployment mode:
+# - local  : site password is disabled
+# - public : site password is enabled
+deployment_type: public
+
+# Site access password used only when deployment_type is public.
+site_password: salesmanager

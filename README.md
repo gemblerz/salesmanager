@@ -10,7 +10,7 @@ A simple, user-friendly web application for managing merchandise inventory and t
 - **Sales Recording**: Record sales transactions with both product and consumer selection
 - **Sales History**: View complete sales history with period filters and consumer information
 - **Statistics Dashboard**: Track total items, stock, sales, and revenue
-- **Database Backup**: All data is stored in a SQLite database (salesmanager.db)
+- **Database Backup**: All data is stored in a SQLite database (`database/salesmanager.db` by default)
 
 ## Requirements
 
@@ -44,12 +44,17 @@ A simple, user-friendly web application for managing merchandise inventory and t
 2. Run:
    ```bash
    chmod +x ./install.sh
-   sudo ./install.sh
+   sudo ./install.sh --app-args ./app-args.yml
    ```
 3. This installs and enables `salesmanager.service`, which runs:
-   - `ghcr.io/gemblerz/salesmanager:latest`
-   - on port `5000`
-4. Verify service status at any time:
+    - `ghcr.io/gemblerz/salesmanager:latest`
+    - on port `5000`
+4. Configure deployment/auth behavior in `app-args.yml`:
+   - `database_path: database/salesmanager.db` (default DB file path)
+   - `deployment_type: local` → no site password prompt
+   - `deployment_type: public` → site password prompt enabled
+   - `site_password` is used only for `public`
+5. Verify service status at any time:
    ```bash
    ./install.sh --check
    ```
@@ -113,12 +118,12 @@ By default, the application runs in production mode using Gunicorn.
 
 ## Database
 
-All data is stored in `salesmanager.db` in the project directory by default. This file is automatically created on first run.
+All data is stored in `database/salesmanager.db` by default. This file is automatically created on first run.
 When starting with `python run.py`, you can change the location with `--database-path /path/to/salesmanager.db`.
 
-**Backup**: To backup your data, simply copy the `salesmanager.db` file to a safe location.
+**Backup**: To backup your data, simply copy the `database/salesmanager.db` file to a safe location.
 
-**Restore**: To restore, replace the `salesmanager.db` file with your backup.
+**Restore**: To restore, replace the `database/salesmanager.db` file with your backup.
 
 ## Interface Design
 

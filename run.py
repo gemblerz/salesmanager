@@ -7,7 +7,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Run Sales Manager server')
     parser.add_argument(
         '--database-path',
-        default=os.environ.get('DATABASE_PATH', 'salesmanager.db'),
+        default=os.environ.get('DATABASE_PATH', 'database/salesmanager.db'),
         help='Path to SQLite database file'
     )
     parser.add_argument(

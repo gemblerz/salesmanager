@@ -471,7 +471,7 @@
     </style>
 </head>
 <body>
-    <div id="passwordOverlay" class="active">
+    <div id="passwordOverlay" class="{{ 'active' if site_password_required else '' }}">
         <div class="password-card">
             <h2>비밀번호 인증</h2>
             <p>웹사이트 접근을 위해 비밀번호를 입력해주세요.</p>
@@ -658,6 +658,7 @@
 
     <script>
         const DEFAULT_TIMEZONE = 'Asia/Seoul';
+        const SITE_PASSWORD_REQUIRED = {{ site_password_required|tojson }};
         const numberFormatter = new Intl.NumberFormat('ko-KR');
         let saleMerchandiseItems = [];
         let saleConsumers = [];
@@ -1550,23 +1551,29 @@
             field.addEventListener('change', () => field.setCustomValidity(''));
         });
 
-        document.getElementById('passwordForm').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const passwordInput = document.getElementById('sitePassword');
-            const passwordError = document.getElementById('passwordError');
-            const overlay = document.getElementById('passwordOverlay');
-            const ok = await requestSitePassword(passwordInput.value);
-            if (!ok) {
-                passwordError.textContent = '비밀번호가 올바르지 않습니다.';
-                passwordInput.focus();
-                passwordInput.select();
-                return;
-            }
-            passwordError.textContent = '';
-            overlay.classList.remove('active');
+        const passwordForm = document.getElementById('passwordForm');
+        if (SITE_PASSWORD_REQUIRED) {
+            passwordForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const passwordInput = document.getElementById('sitePassword');
+                const passwordError = document.getElementById('passwordError');
+                const overlay = document.getElementById('passwordOverlay');
+                const ok = await requestSitePassword(passwordInput.value);
+                if (!ok) {
+                    passwordError.textContent = '비밀번호가 올바르지 않습니다.';
+                    passwordInput.focus();
+                    passwordInput.select();
+                    return;
+                }
+                passwordError.textContent = '';
+                overlay.classList.remove('active');
+                loadTimezoneConfig();
+                loadMerchandise();
+            });
+        } else {
             loadTimezoneConfig();
             loadMerchandise();
-        });
+        }
     </script>
 </body>
 </html>
