@@ -15,6 +15,11 @@ def parse_args(argv=None):
         default='0.0.0.0:5000',
         help='Gunicorn bind address'
     )
+    parser.add_argument(
+        '--worker-class',
+        default=os.environ.get('GUNICORN_WORKER_CLASS', 'gthread'),
+        help='Gunicorn worker class'
+    )
     return parser.parse_args(argv)
 
 
@@ -24,7 +29,12 @@ def main(argv=None):
     from app import init_db
 
     init_db()
-    return subprocess.call(['gunicorn', '--bind', args.bind, 'app:app'])
+    return subprocess.call([
+        'gunicorn',
+        '--bind', args.bind,
+        '--worker-class', args.worker_class,
+        'app:app'
+    ])
 
 
 if __name__ == '__main__':
